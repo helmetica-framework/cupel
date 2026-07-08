@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/helmetica-framework/cupel/pkg/diff"
 )
@@ -58,21 +58,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		colW := max((msg.Width-3)/2, 1)
 		colH := max(msg.Height-headerHeight, 1)
 		if !m.ready {
-			m.left = viewport.New(colW, colH)
-			m.right = viewport.New(colW, colH)
+			m.left = viewport.New(viewport.WithWidth(colW), viewport.WithHeight(colH))
+			m.right = viewport.New(viewport.WithWidth(colW), viewport.WithHeight(colH))
 			m.ready = true
 		} else {
-			m.left.Width = colW
-			m.left.Height = colH
-			m.right.Width = colW
-			m.right.Height = colH
+			m.left.SetWidth(colW)
+			m.left.SetHeight(colH)
+			m.right.SetWidth(colW)
+			m.right.SetHeight(colH)
 		}
 		leftContent, rightContent := m.renderRows(colW)
 		m.left.SetContent(leftContent)
 		m.right.SetContent(rightContent)
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
@@ -123,9 +123,17 @@ func styledCell(c diff.Cell, colW int) string {
 	return st.Render(line)
 }
 
-// View renders the full TUI, returning "initializing…" until the first
-// WindowSizeMsg has been processed.
-func (m Model) View() string {
+// View renders the full TUI as an alt-screen Bubble Tea view. In v2 the
+// alt-screen buffer is requested on the View rather than as a program option.
+func (m Model) View() tea.View {
+	v := tea.NewView(m.content())
+	v.AltScreen = true
+	return v
+}
+
+// content builds the rendered screen text, showing "initializing…" until the
+// first WindowSizeMsg has been processed.
+func (m Model) content() string {
 	if !m.ready {
 		return "initializing…"
 	}
@@ -143,7 +151,7 @@ func (m Model) View() string {
 
 	if added == 0 && removed == 0 {
 		identical := lipgloss.Place(
-			m.width, m.left.Height,
+			m.width, m.left.Height(),
 			lipgloss.Center, lipgloss.Center,
 			"charts are identical",
 		)
@@ -159,10 +167,10 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, columns)
 }
 
-// Run starts a new Bubble Tea program with the alt-screen buffer and blocks
-// until the user quits.
+// Run starts a new Bubble Tea program and blocks until the user quits. The
+// alt-screen buffer is enabled via the model's View.
 func Run(refA, refB string, result diff.Result) error {
-	p := tea.NewProgram(New(refA, refB, result), tea.WithAltScreen())
+	p := tea.NewProgram(New(refA, refB, result))
 	_, err := p.Run()
 	return err
 }
