@@ -1,0 +1,2 @@
+replicas: 2
+image: demo:1.0.0
