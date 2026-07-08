@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/helmetica-framework/cupel/pkg/diff"
 )
@@ -42,7 +42,7 @@ func sized(m Model) Model {
 
 func TestViewShowsHeaderRefsAndCounts(t *testing.T) {
 	m := sized(New("oci://a:1.2.0", "oci://b:1.3.0", sampleResult()))
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "oci://a:1.2.0") || !strings.Contains(view, "oci://b:1.3.0") {
 		t.Errorf("header missing refs:\n%s", view)
 	}
@@ -53,7 +53,7 @@ func TestViewShowsHeaderRefsAndCounts(t *testing.T) {
 
 func TestViewRendersBothSidesText(t *testing.T) {
 	m := sized(New("a", "b", sampleResult()))
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "image: app:1.2.0") {
 		t.Errorf("left content missing:\n%s", view)
 	}
@@ -64,7 +64,7 @@ func TestViewRendersBothSidesText(t *testing.T) {
 
 func TestQuitKeyReturnsQuitCmd(t *testing.T) {
 	m := sized(New("a", "b", sampleResult()))
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	if cmd == nil {
 		t.Fatal("expected a quit command, got nil")
 	}
@@ -86,8 +86,8 @@ func TestEmptyDiffShowsIdenticalMessage(t *testing.T) {
 	for name, res := range cases {
 		t.Run(name, func(t *testing.T) {
 			m := sized(New("a", "b", res))
-			if !strings.Contains(strings.ToLower(m.View()), "identical") {
-				t.Errorf("expected identical message:\n%s", m.View())
+			if !strings.Contains(strings.ToLower(m.View().Content), "identical") {
+				t.Errorf("expected identical message:\n%s", m.View().Content)
 			}
 		})
 	}

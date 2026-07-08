@@ -13,6 +13,14 @@
   ],
   "packageRules": [
     {
+      "groupName": "charmbracelet",
+      "description": "Group the Charm TUI stack (bubbletea/bubbles/lipgloss, both github.com and charm.land module paths) so their coordinated v2-style releases upgrade together in a single PR instead of a broken partial bump.",
+      "matchPackageNames": [
+        "/^github\\.com/charmbracelet//",
+        "/^charm\\.land//"
+      ]
+    },
+    {
       "schedule": [
         "on the first day of the month"
       ],
