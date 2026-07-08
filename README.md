@@ -28,7 +28,7 @@ This opens an interactive side-by-side view of the rendered manifests:
 
 ## How it works
 
-Each chart is pulled from its OCI registry and rendered with its **default values**, client-side (no cluster contact), using a fixed dummy release — name `cupel`, namespace `default` — so any difference is purely chart-driven. The rendered manifests are then diffed line by line and aligned into rows for the side-by-side view.
+Each chart is pulled from its OCI registry and rendered with its **default values**, client-side (no cluster contact), using a fixed dummy release (name `cupel`, namespace `default`) so any difference is purely chart-driven. The rendered manifests are then diffed line by line and aligned into rows for the side-by-side view.
 
 ## Known limitations
 
@@ -37,7 +37,7 @@ Each chart is pulled from its OCI registry and rendered with its **default value
 
 ## Libraries
 
-* [diff](https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/diff) — pluggable diff engines over rendered charts (the `linewise` engine ships by default).
-* [render](https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/render) — render a chart to its manifests with default values.
-* [oci](https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/oci) — pull a Helm chart from an OCI registry.
-* [tui](https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/tui) — the interactive side-by-side viewer.
+* [diff](https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/diff) - pluggable diff engines over rendered charts (the `linewise` engine ships by default).
+* [render](https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/render) - render a chart to its manifests with default values.
+* [oci](https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/oci) - pull a Helm chart from an OCI registry.
+* [tui](https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/tui) - the interactive side-by-side viewer.
