@@ -1,0 +1,32 @@
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin
+Dockerfile.cross
+cupel
+
+# Goreleaser
+dist/
+.github/release-notes.md
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Generated reagent output from local runs
+test/*
+
+# editor and IDE paraphernalia
+.idea
+*.swp
+*.swo
+*~
+
+# Superpowers design specs / working docs
+docs/superpowers/
