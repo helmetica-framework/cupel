@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -13,20 +14,26 @@ import (
 
 // computeDiff pulls refA and refB using puller, renders both charts, and runs
 // the named diff engine. It returns the diff result without launching the TUI.
+// Progress is logged via slog as each (potentially slow, network-bound) stage
+// runs, since this all happens before the TUI takes over the screen.
 func computeDiff(puller oci.Puller, engineName, refA, refB string) (diff.Result, error) {
+	slog.Info("pulling chart", "ref", refA)
 	chA, err := puller.Pull(refA)
 	if err != nil {
 		return diff.Result{}, err
 	}
+	slog.Info("pulling chart", "ref", refB)
 	chB, err := puller.Pull(refB)
 	if err != nil {
 		return diff.Result{}, err
 	}
 
+	slog.Info("rendering chart", "ref", refA)
 	manA, err := render.Render(chA)
 	if err != nil {
 		return diff.Result{}, fmt.Errorf("rendering %s: %w", refA, err)
 	}
+	slog.Info("rendering chart", "ref", refB)
 	manB, err := render.Render(chB)
 	if err != nil {
 		return diff.Result{}, fmt.Errorf("rendering %s: %w", refB, err)
@@ -37,6 +44,7 @@ func computeDiff(puller oci.Puller, engineName, refA, refB string) (diff.Result,
 		return diff.Result{}, err
 	}
 
+	slog.Info("weighing charts", "engine", engineName)
 	return eng.Diff(diff.Rendered{Ref: refA, Manifest: manA}, diff.Rendered{Ref: refB, Manifest: manB})
 }
 
