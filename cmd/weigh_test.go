@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/loader"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
 
@@ -68,6 +69,20 @@ func TestComputeDiffPropagatesPullError(t *testing.T) {
 		t.Fatal("expected pull error to propagate")
 	} else if !strings.Contains(err.Error(), "boom") {
 		t.Errorf("error = %v, want it to mention boom", err)
+	}
+}
+
+func TestComputeDiffPropagatesRenderError(t *testing.T) {
+	// A chart whose template calls the `fail` function cannot render.
+	bad := &chart.Chart{
+		Metadata:  &chart.Metadata{APIVersion: "v2", Name: "bad", Version: "0.1.0"},
+		Templates: []*common.File{{Name: "templates/x.yaml", Data: []byte(`{{ fail "boom" }}`)}},
+	}
+	p := fakePuller{charts: map[string]*chart.Chart{"a": bad, "b": bad}}
+	if _, err := computeDiff(p, "linewise", "a", "b"); err == nil {
+		t.Fatal("expected render error to propagate")
+	} else if !strings.Contains(err.Error(), "rendering") {
+		t.Errorf("error = %v, want it to mention rendering", err)
 	}
 }
 

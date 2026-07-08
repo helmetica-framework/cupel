@@ -5,8 +5,27 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/helmetica-framework/cupel/pkg/diff"
 )
+
+// A rendered cell must never exceed its column width in display cells, even on
+// very narrow terminals or with wide/multibyte text (regression: the gutter
+// marker used to overflow columns of width <= 2).
+func TestStyledCellNeverExceedsColumnWidth(t *testing.T) {
+	cells := []diff.Cell{
+		{Kind: diff.Removed, Text: "image: app:1.2.0 with a long trailing description"},
+		{Kind: diff.Added, Text: "日本語テキストのとても長い行"},
+		{Kind: diff.Same, Text: "apiVersion: v1"},
+	}
+	for _, colW := range []int{1, 2, 3, 5, 12, 40} {
+		for _, c := range cells {
+			if w := ansi.StringWidth(styledCell(c, colW)); w > colW {
+				t.Errorf("colW=%d, kind=%v: width %d exceeds column", colW, c.Kind, w)
+			}
+		}
+	}
+}
 
 func sampleResult() diff.Result {
 	return diff.Result{Rows: []diff.Row{
@@ -55,11 +74,21 @@ func TestQuitKeyReturnsQuitCmd(t *testing.T) {
 	}
 }
 
+// A zero-change diff — whether every row is Same or there are no rows at all —
+// shows the centered "charts are identical" message.
 func TestEmptyDiffShowsIdenticalMessage(t *testing.T) {
-	m := sized(New("a", "b", diff.Result{Rows: []diff.Row{
-		{Left: diff.Cell{Kind: diff.Same, Text: "x"}, Right: diff.Cell{Kind: diff.Same, Text: "x"}},
-	}}))
-	if !strings.Contains(strings.ToLower(m.View()), "identical") {
-		t.Errorf("expected identical message for zero-change diff:\n%s", m.View())
+	cases := map[string]diff.Result{
+		"all same": {Rows: []diff.Row{
+			{Left: diff.Cell{Kind: diff.Same, Text: "x"}, Right: diff.Cell{Kind: diff.Same, Text: "x"}},
+		}},
+		"no rows": {},
+	}
+	for name, res := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := sized(New("a", "b", res))
+			if !strings.Contains(strings.ToLower(m.View()), "identical") {
+				t.Errorf("expected identical message:\n%s", m.View())
+			}
+		})
 	}
 }

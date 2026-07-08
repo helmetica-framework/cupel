@@ -8,9 +8,13 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/helmetica-framework/cupel/pkg/diff"
 )
 
+// headerHeight is the vertical space reserved for the header line plus one
+// blank line of margin; it is subtracted from the terminal height when sizing
+// the viewports.
 const headerHeight = 2
 
 var (
@@ -99,13 +103,6 @@ func styledCell(c diff.Cell, colW int) string {
 	if c.Kind == diff.Pad {
 		return ""
 	}
-	text := c.Text
-	// Reserve 2 chars for the gutter marker and a space.
-	maxText := max(colW-2, 1)
-	if len([]rune(text)) > maxText {
-		runes := []rune(text)
-		text = string(runes[:maxText-1]) + "…"
-	}
 	var marker string
 	var st lipgloss.Style
 	switch c.Kind {
@@ -119,7 +116,11 @@ func styledCell(c diff.Cell, colW int) string {
 		marker = " "
 		st = styleSame
 	}
-	return st.Render(marker + " " + text)
+	// Hard-clamp the whole line (gutter marker + space + text) to the column
+	// width in display cells, appending an ellipsis when truncated. ansi.Truncate
+	// is width-aware, so wide/multibyte runes never overflow the column.
+	line := ansi.Truncate(marker+" "+c.Text, colW, "…")
+	return st.Render(line)
 }
 
 // View renders the full TUI, returning "initializing…" until the first
@@ -137,6 +138,8 @@ func (m Model) View() string {
 		stylePlus.Render(fmt.Sprintf("+%d", added)),
 		styleMinus.Render(fmt.Sprintf("-%d", removed)),
 	)
+	// Keep the header on one line so it can't wrap and desync the columns.
+	header = ansi.Truncate(header, m.width, "…")
 
 	if added == 0 && removed == 0 {
 		identical := lipgloss.Place(
