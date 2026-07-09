@@ -37,3 +37,49 @@ func TestRenderProducesManifestWithDefaultValues(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderWithNilOverlayMatchesRender(t *testing.T) {
+	ch := loadDemo(t)
+	want, err := Render(ch)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	got, err := RenderWith(loadDemo(t), nil)
+	if err != nil {
+		t.Fatalf("RenderWith: %v", err)
+	}
+	if got != want {
+		t.Errorf("RenderWith(ch, nil) != Render(ch)\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestRenderWithOverlayOverridesDefaults(t *testing.T) {
+	out, err := RenderWith(loadDemo(t), map[string]any{
+		"replicas": 5,
+		"image":    "demo:9.9.9",
+	})
+	if err != nil {
+		t.Fatalf("RenderWith: %v", err)
+	}
+	if !strings.Contains(out, "replicas: 5") {
+		t.Errorf("overlay replicas not applied:\n%s", out)
+	}
+	if !strings.Contains(out, "image: demo:9.9.9") {
+		t.Errorf("overlay image not applied:\n%s", out)
+	}
+	// A key the overlay didn't set must keep the chart default.
+	if strings.Contains(out, "replicas: 2") {
+		t.Errorf("default replicas leaked through overlay:\n%s", out)
+	}
+}
+
+func TestRenderWithOverlayLeavesUnsetDefaults(t *testing.T) {
+	// Overlay only replicas; image must fall back to the chart default.
+	out, err := RenderWith(loadDemo(t), map[string]any{"replicas": 7})
+	if err != nil {
+		t.Fatalf("RenderWith: %v", err)
+	}
+	if !strings.Contains(out, "replicas: 7") || !strings.Contains(out, "image: demo:1.0.0") {
+		t.Errorf("expected replicas:7 + default image:\n%s", out)
+	}
+}

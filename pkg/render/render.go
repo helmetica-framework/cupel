@@ -13,12 +13,25 @@ import (
 	"helm.sh/helm/v4/pkg/engine"
 )
 
-// Render renders the chart to its Kubernetes manifests using the chart's
-// default values and a fixed dummy release (cupel/default), equivalent to
-// `helm template`. Each template is emitted as a separate YAML document with a
-// "# Source" provenance header; NOTES.txt and empty files are skipped.
-func Render(ch *chart.Chart) (string, error) {
-	vals, err := chartutil.ToRenderValues(ch, ch.Values, common.ReleaseOptions{
+// RenderWith renders the chart to its Kubernetes manifests using a fixed dummy
+// release (cupel/default), equivalent to `helm template`. Values from overlay
+// take precedence over the chart's defaults; keys the overlay omits fall back
+// to the chart values. A nil overlay renders with the defaults alone. Each
+// template is emitted as a separate YAML document with a "# Source" provenance
+// header; NOTES.txt and empty files are skipped.
+func RenderWith(ch *chart.Chart, overlay map[string]any) (string, error) {
+	merged := ch.Values
+
+	if overlay != nil {
+		// CoalesceTables treats its first argument as authoritative and merges
+		// the chart defaults in beneath it, so overlay wins.
+		// This mutates the caller's overlay map (defaults get folded
+		// in). Harmless here since both diff sides fold in the same defaults;
+		// clone the overlay first if a caller ever needs it left untouched.
+		merged = chartutil.CoalesceTables(overlay, merged)
+	}
+
+	vals, err := chartutil.ToRenderValues(ch, merged, common.ReleaseOptions{
 		Name:      "cupel",
 		Namespace: "default",
 	}, nil)
@@ -53,4 +66,10 @@ func Render(ch *chart.Chart) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+// Render renders the chart with its default values, equivalent to
+// RenderWith(ch, nil).
+func Render(ch *chart.Chart) (string, error) {
+	return RenderWith(ch, nil)
 }
