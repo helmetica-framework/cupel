@@ -9,6 +9,7 @@ import (
 	"github.com/helmetica-framework/cupel/pkg/diff"
 	"github.com/helmetica-framework/cupel/pkg/oci"
 	"github.com/helmetica-framework/cupel/pkg/render"
+	"github.com/helmetica-framework/cupel/pkg/revision"
 	"github.com/helmetica-framework/cupel/pkg/tui"
 )
 
@@ -48,15 +49,64 @@ func computeDiff(puller oci.Puller, engineName, refA, refB string) (diff.Result,
 	return eng.Diff(diff.Rendered{Ref: refA, Manifest: manA}, diff.Rendered{Ref: refB, Manifest: manB})
 }
 
-// newWeighCmd builds a cobra command that pulls two OCI chart references,
-// diffs them, and opens the TUI viewer.
+// weighArgs validates the flag/positional combination and returns an error when
+// the shape is wrong. It is called at the top of RunE so cobra's Args check is
+// bypassed (set to ArbitraryArgs) and we can produce mode-specific messages.
+func weighArgs(revDir, claimPath string, positionals []string) error {
+	revisionMode := revDir != "" || claimPath != ""
+	if revisionMode {
+		if revDir == "" || claimPath == "" {
+			return fmt.Errorf("both --revisions and --claim are required")
+		}
+		if len(positionals) > 0 {
+			return fmt.Errorf("revision mode takes no positional refs")
+		}
+		return nil
+	}
+	// OCI mode: require exactly 2 positional args.
+	if len(positionals) != 2 {
+		return fmt.Errorf("weigh requires exactly 2 OCI refs, got %d", len(positionals))
+	}
+	return nil
+}
+
+// newWeighCmd builds a cobra command that either diffs two OCI chart references
+// (OCI mode) or diffs a directory of InstanceRevision files against a claim
+// base (revision mode), opening the appropriate TUI in each case.
 func newWeighCmd(puller oci.Puller) *cobra.Command {
-	var engineName string
+	var engineName, revDir, claimPath string
 	cmd := &cobra.Command{
-		Use:   "weigh <refA> <refB>",
+		Use:   "weigh <refA> <refB>  |  weigh -r <dir> -c <claim.yaml>",
 		Short: "Balance one OCI chart against another and see which way it tips.",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := weighArgs(revDir, claimPath, args); err != nil {
+				return err
+			}
+
+			revisionMode := revDir != "" || claimPath != ""
+			if revisionMode {
+				slog.Info("loading claim", "path", claimPath)
+				claim, err := revision.LoadClaim(claimPath)
+				if err != nil {
+					return err
+				}
+				slog.Info("loading revisions", "dir", revDir)
+				revs, err := revision.LoadRevisions(revDir)
+				if err != nil {
+					return err
+				}
+				if len(revs) == 0 {
+					return fmt.Errorf("no revisions found in %s", revDir)
+				}
+				eng, err := diff.Get(engineName)
+				if err != nil {
+					return err
+				}
+				return tui.RunRevisions(claim, revs, puller, eng)
+			}
+
+			// OCI mode (unchanged).
 			result, err := computeDiff(puller, engineName, args[0], args[1])
 			if err != nil {
 				return err
@@ -67,6 +117,8 @@ func newWeighCmd(puller oci.Puller) *cobra.Command {
 	// hidden engine seam; defaults to "linewise", not advertised yet.
 	cmd.Flags().StringVar(&engineName, "engine", "linewise", "diff engine")
 	_ = cmd.Flags().MarkHidden("engine")
+	cmd.Flags().StringVarP(&revDir, "revisions", "r", "", "directory of InstanceRevision YAML files")
+	cmd.Flags().StringVarP(&claimPath, "claim", "c", "", "claim YAML file")
 	return cmd
 }
 

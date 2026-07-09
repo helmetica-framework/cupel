@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/loader"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
@@ -83,6 +84,57 @@ func TestComputeDiffPropagatesRenderError(t *testing.T) {
 		t.Fatal("expected render error to propagate")
 	} else if !strings.Contains(err.Error(), "rendering") {
 		t.Errorf("error = %v, want it to mention rendering", err)
+	}
+}
+
+// weighFor builds a standalone weigh command with a no-op puller and silenced
+// cobra output, for exercising argument validation without launching the TUI.
+func weighFor(args ...string) *cobra.Command {
+	cmd := newWeighCmd(fakePuller{charts: map[string]*chart.Chart{}})
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs(args)
+	return cmd
+}
+
+func TestWeighOCIModeRequiresTwoPositional(t *testing.T) {
+	if err := weighFor("only-one").Execute(); err == nil {
+		t.Fatal("expected error: OCI mode needs exactly 2 refs")
+	}
+}
+
+func TestWeighRevisionModeRejectsPositional(t *testing.T) {
+	err := weighFor("-r", "revs", "-c", "claim.yaml", "extra-ref").Execute()
+	if err == nil {
+		t.Fatal("expected error: revision mode takes no positional args")
+	}
+	if !strings.Contains(err.Error(), "positional") {
+		t.Errorf("error should mention positional args, got: %v", err)
+	}
+}
+
+func TestWeighRevisionModeRequiresBothFlags(t *testing.T) {
+	for _, args := range [][]string{{"-r", "revs"}, {"-c", "claim.yaml"}} {
+		err := weighFor(args...).Execute()
+		if err == nil {
+			t.Fatalf("%v: expected error, revision mode requires both -r and -c", args)
+		}
+		if !strings.Contains(err.Error(), "required") {
+			t.Errorf("%v: error should mention both flags are required, got: %v", args, err)
+		}
+	}
+}
+
+// With both flags and no positional args, validation passes and the command
+// proceeds to loading — so a bogus claim path yields a claim load error, not an
+// arg-shape error and not an unknown-flag error.
+func TestWeighRevisionModeAcceptsFlagsThenLoads(t *testing.T) {
+	err := weighFor("-r", "/no/such/dir", "-c", "/no/such/claim.yaml").Execute()
+	if err == nil {
+		t.Fatal("expected a claim load error")
+	}
+	if !strings.Contains(err.Error(), "claim") {
+		t.Errorf("expected a claim load error (passed arg validation), got: %v", err)
 	}
 }
 
