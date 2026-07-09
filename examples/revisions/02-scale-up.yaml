@@ -1,0 +1,13 @@
+apiVersion: helmetica.io/v1
+kind: InstanceRevision
+metadata:
+  name: podinfo-release-r2
+  namespace: default
+  creationTimestamp: "2026-07-03T14:30:00Z"
+spec:
+  ociUrl: oci://ghcr.io/stefanprodan/charts/podinfo
+  version: 6.5.0
+  values:
+    replicaCount: 3
+    ui:
+      message: "hello from the claim"

@@ -1,0 +1,14 @@
+apiVersion: helmetica.io/v1
+kind: InstanceRevision
+metadata:
+  name: podinfo-release-r3
+  namespace: default
+  creationTimestamp: "2026-07-06T11:15:00Z"
+spec:
+  ociUrl: oci://ghcr.io/stefanprodan/charts/podinfo
+  version: 6.7.0
+  values:
+    replicaCount: 3
+    ui:
+      message: "upgraded to 6.7.0"
+      color: "#a83279"
