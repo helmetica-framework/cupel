@@ -86,15 +86,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// renderRows builds the left and right column content strings from the diff
+// buildColumns builds the left and right column content strings from the diff
 // rows, applying Lip Gloss styles and truncating long lines.
-func (m Model) renderRows(colW int) (leftOut, rightOut string) {
+func buildColumns(rows []diff.Row, colW int) (left, right string) {
 	var leftLines, rightLines []string
-	for _, row := range m.result.Rows {
+	for _, row := range rows {
 		leftLines = append(leftLines, styledCell(row.Left, colW))
 		rightLines = append(rightLines, styledCell(row.Right, colW))
 	}
 	return strings.Join(leftLines, "\n"), strings.Join(rightLines, "\n")
+}
+
+// renderRows delegates to the package-level buildColumns helper.
+func (m Model) renderRows(colW int) (leftOut, rightOut string) {
+	return buildColumns(m.result.Rows, colW)
 }
 
 // styledCell renders a single cell with the appropriate Lip Gloss style and
