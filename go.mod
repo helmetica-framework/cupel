@@ -7,7 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/lipgloss/v2 v2.0.5
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/helmetica-framework/chrysopoeia v0.0.0-20260709114857-c23ff462e6ea
+	github.com/helmetica-framework/chrysopoeia v0.0.0-20260709162228-378c8832a94c
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
 	helm.sh/helm/v4 v4.2.2
