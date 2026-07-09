@@ -1,0 +1,4 @@
+oci: oci://ghcr.io/stefanprodan/charts/podinfo
+version: 6.14.0
+values:
+  replicaCount: 1
