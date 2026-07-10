@@ -235,6 +235,46 @@ func TestModelCachesSharedChartPulls(t *testing.T) {
 	}
 }
 
+// fixedNow is a stable clock for approval rendering tests.
+var fixedNow = time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+
+// approvalModel builds a sized revision model with a pinned clock and three
+// revisions: approved (past), unapproved (nil), and future-approved.
+func approvalModel(t *testing.T) revModel {
+	t.Helper()
+	_, _, puller, eng := testFixtures(t)
+	claim := revision.Claim{OCI: "oci://demo", Version: "1.0.0", Values: map[string]any{"replicas": 2}}
+	past := time.Date(2026, 7, 8, 16, 1, 0, 0, time.UTC)
+	future := time.Date(2026, 7, 20, 16, 1, 0, 0, time.UTC)
+	revs := []revision.Revision{
+		{Name: "rev-approved", Created: time.Unix(1, 0), OCI: "oci://demo", Version: "1.0.0", ApprovedAt: &past},
+		{Name: "rev-unapproved", Created: time.Unix(2, 0), OCI: "oci://demo", Version: "1.0.0", ApprovedAt: nil},
+		{Name: "rev-future", Created: time.Unix(3, 0), OCI: "oci://demo", Version: "1.0.0", ApprovedAt: &future},
+	}
+	m := newRevModel(claim, revs, puller, eng)
+	m.now = fixedNow
+	// Wide enough that the full "approved at: …" status line fits the list
+	// column without truncation (listColMax = 34).
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
+	return updated.(revModel)
+}
+
+func TestListShowsApprovalStatusLines(t *testing.T) {
+	view := approvalModel(t).View().Content
+	for _, want := range []string{
+		"rev-approved",
+		"approved at: 2026-07-08 16:01",
+		"rev-unapproved",
+		"not approved",
+		"rev-future",
+		"approved at: 2026-07-20 16:01",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("list view missing %q\n%s", want, view)
+		}
+	}
+}
+
 type errPuller struct{}
 
 func (errPuller) Pull(string) (*chart.Chart, error) { return nil, errBoom }
