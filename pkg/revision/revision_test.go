@@ -3,6 +3,7 @@ package revision
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadClaim(t *testing.T) {
@@ -84,6 +85,36 @@ func TestLoadRevisionsFailsOnMalformed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "broken.yaml") {
 		t.Errorf("error should name the offending file, got: %v", err)
+	}
+}
+
+func TestLoadRevisionsParsesApprovedAt(t *testing.T) {
+	revs, err := LoadRevisions("testdata/approved")
+	if err != nil {
+		t.Fatalf("LoadRevisions: %v", err)
+	}
+	if len(revs) != 1 {
+		t.Fatalf("got %d revisions, want 1", len(revs))
+	}
+	got := revs[0].ApprovedAt
+	if got == nil {
+		t.Fatal("ApprovedAt = nil, want the parsed timestamp")
+	}
+	want := time.Date(2026, 7, 8, 16, 1, 29, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Errorf("ApprovedAt = %v, want %v", got, want)
+	}
+}
+
+func TestLoadRevisionsApprovedAtNilWhenAbsent(t *testing.T) {
+	revs, err := LoadRevisions("testdata/revs")
+	if err != nil {
+		t.Fatalf("LoadRevisions: %v", err)
+	}
+	for _, r := range revs {
+		if r.ApprovedAt != nil {
+			t.Errorf("%s: ApprovedAt = %v, want nil (fixture has no approvedAt)", r.Name, *r.ApprovedAt)
+		}
 	}
 }
 

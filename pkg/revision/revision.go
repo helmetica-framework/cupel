@@ -33,6 +33,8 @@ type Revision struct {
 	OCI     string
 	Version string
 	Values  map[string]any
+	// ApprovedAt is when the revision was approved; nil means never approved.
+	ApprovedAt *time.Time
 }
 
 // LoadClaim reads and parses the claim YAML at path.
@@ -107,13 +109,21 @@ func loadRevision(file string) (Revision, error) {
 		}
 	}
 
-	return Revision{
+	rev := Revision{
 		Name:    ir.Name,
 		Created: ir.CreationTimestamp.Time,
 		OCI:     ir.Spec.OCIUrl,
 		Version: ir.Spec.Version,
 		Values:  vals,
-	}, nil
+	}
+
+	// spec.approvedAt is optional; a nil pointer means never approved.
+	if ir.Spec.ApprovedAt != nil {
+		t := ir.Spec.ApprovedAt.Time
+		rev.ApprovedAt = &t
+	}
+
+	return rev, nil
 }
 
 // isYAML reports whether name has a YAML file extension.
