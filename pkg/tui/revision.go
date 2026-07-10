@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"sync"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -12,46 +11,9 @@ import (
 
 	"github.com/helmetica-framework/cupel/pkg/diff"
 	"github.com/helmetica-framework/cupel/pkg/oci"
-	"github.com/helmetica-framework/cupel/pkg/render"
 	"github.com/helmetica-framework/cupel/pkg/revision"
-	chart "helm.sh/helm/v4/pkg/chart/v2"
+	"github.com/helmetica-framework/cupel/pkg/source"
 )
-
-// chartCache memoises pulled charts by OCI ref. It is guarded by a mutex so it
-// can be shared (by pointer) into the tea.Cmd goroutines that render each
-// revision without racing.
-type chartCache struct {
-	mu     sync.Mutex
-	charts map[string]*chart.Chart
-}
-
-func newChartCache() *chartCache {
-	return &chartCache{charts: map[string]*chart.Chart{}}
-}
-
-// pull returns the chart at ref, pulling and caching it on first request.
-//
-// Two goroutines that miss the same ref at once will both pull it (the second
-// write just overwrites). Rare and harmless; add singleflight only if
-// duplicate pulls ever actually hurt.
-func (c *chartCache) pull(puller oci.Puller, ref string) (*chart.Chart, error) {
-	c.mu.Lock()
-	ch, ok := c.charts[ref]
-	c.mu.Unlock()
-	if ok {
-		return ch, nil
-	}
-
-	ch, err := puller.Pull(ref)
-	if err != nil {
-		return nil, err
-	}
-
-	c.mu.Lock()
-	c.charts[ref] = ch
-	c.mu.Unlock()
-	return ch, nil
-}
 
 // revDiffMsg carries the outcome of an asynchronous revision render+diff back
 // to Update, keyed by revision name so Update can cache it and decide whether
@@ -75,7 +37,6 @@ type revModel struct {
 	err      error
 
 	diffCache map[string]diff.Result // rendered diffs, by revision name
-	charts    *chartCache            // pulled charts, by OCI ref
 
 	left, right   viewport.Model
 	width, height int
@@ -83,53 +44,43 @@ type revModel struct {
 	ready         bool
 }
 
-// newRevModel creates a revModel for the given claim base and revisions,
-// pulling charts through puller and diffing with engine.
+// newRevModel creates a revModel for the given claim base and revisions. The
+// puller is wrapped in a caching puller so charts shared across the claim and
+// its revisions (same oci:version) are pulled once, even across the tea.Cmd
+// goroutines that render each revision.
 func newRevModel(claim revision.Claim, revs []revision.Revision, puller oci.Puller, engine diff.Engine) revModel {
 	return revModel{
 		claim:     claim,
 		revs:      revs,
-		puller:    puller,
+		puller:    oci.NewCachingPuller(puller),
 		engine:    engine,
 		selected:  0,
 		diffCache: map[string]diff.Result{},
-		charts:    newChartCache(),
 	}
 }
 
-// revisionDiff renders the claim base (from claim.OCI) and one revision (from
-// its own rev.OCI), each at its own version, and diffs claim-vs-revision.
-// Charts are pulled through the shared, mutex-guarded charts cache, so it is
-// safe to run inside a tea.Cmd goroutine without racing the model. The claim
-// side is re-rendered on every uncached call (the pull is cached, the render is
-// not); fine for realistic revision counts.
-func revisionDiff(charts *chartCache, puller oci.Puller, engine diff.Engine, claim revision.Claim, rev revision.Revision) (diff.Result, error) {
-	claimRef := claim.OCI + ":" + claim.Version
-	claimMan, err := renderSide(charts, puller, claimRef, claim.Values)
+// revisionDiff renders the claim base and one revision through the source
+// abstraction and diffs claim (before) against revision (after). puller is the
+// model's caching puller, so shared charts are pulled once; it is safe to run
+// inside a tea.Cmd goroutine.
+func revisionDiff(puller oci.Puller, engine diff.Engine, claim revision.Claim, rev revision.Revision) (diff.Result, error) {
+	claimMan, claimLabel, err := source.Claim(claim).Render(puller)
 	if err != nil {
 		return diff.Result{}, fmt.Errorf("claim: %w", err)
 	}
 
-	revRef := rev.OCI + ":" + rev.Version
-	revMan, err := renderSide(charts, puller, revRef, rev.Values)
+	revMan, revLabel, err := source.Revision(rev).Render(puller)
 	if err != nil {
 		return diff.Result{}, fmt.Errorf("revision %s: %w", rev.Name, err)
 	}
 
-	return engine.Diff(
-		diff.Rendered{Ref: claimRef, Manifest: claimMan},
-		diff.Rendered{Ref: revRef, Manifest: revMan},
-	)
-}
-
-// renderSide pulls the chart at ref (via cache) and renders it with the given
-// value overlay.
-func renderSide(charts *chartCache, puller oci.Puller, ref string, values map[string]any) (string, error) {
-	chrt, err := charts.pull(puller, ref)
-	if err != nil {
-		return "", err
-	}
-	return render.RenderWith(chrt, values)
+	return engine.Diff(diff.Rendered{
+		Ref:      claimLabel,
+		Manifest: claimMan,
+	}, diff.Rendered{
+		Ref:      revLabel,
+		Manifest: revMan,
+	})
 }
 
 // selectCmd returns the command that computes the diff for the revision at
@@ -143,9 +94,9 @@ func (m revModel) selectCmd(index int) tea.Cmd {
 		return nil
 	}
 
-	charts, claim, puller, engine := m.charts, m.claim, m.puller, m.engine
+	claim, puller, engine := m.claim, m.puller, m.engine
 	return func() tea.Msg {
-		res, err := revisionDiff(charts, puller, engine, claim, rev)
+		res, err := revisionDiff(puller, engine, claim, rev)
 		return revDiffMsg{name: rev.Name, result: res, err: err}
 	}
 }
@@ -289,7 +240,8 @@ func (m revModel) revContent() string {
 			added, removed = cached.Counts()
 		}
 	}
-	header := fmt.Sprintf("%s  %s  %s %s",
+	header := fmt.Sprintf(
+		"%s  %s  %s %s",
 		m.claim.OCI,
 		selName,
 		stylePlus.Render(fmt.Sprintf("+%d", added)),
@@ -305,7 +257,8 @@ func (m revModel) revContent() string {
 	case m.err != nil:
 		diffArea = m.err.Error()
 	default:
-		diffArea = lipgloss.JoinHorizontal(lipgloss.Top,
+		diffArea = lipgloss.JoinHorizontal(
+			lipgloss.Top,
 			m.left.View(),
 			" ",
 			m.right.View(),

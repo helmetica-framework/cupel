@@ -208,6 +208,33 @@ func TestNavigatingAwayFromErrorClearsIt(t *testing.T) {
 	}
 }
 
+// countPuller records how many times each ref was pulled. selectCmd's command
+// runs synchronously in these tests, so no locking is needed.
+type countPuller struct {
+	ch    *chart.Chart
+	calls map[string]int
+}
+
+func (p *countPuller) Pull(ref string) (*chart.Chart, error) {
+	p.calls[ref]++
+	return p.ch, nil
+}
+
+// The model must wrap its puller in oci.NewCachingPuller: rev-a shares the
+// claim's ref (oci://demo:1.0.0), so rendering both sides of one diff pulls the
+// shared chart exactly once.
+func TestModelCachesSharedChartPulls(t *testing.T) {
+	claim, revs, _, eng := testFixtures(t)
+	inner := &countPuller{ch: demoPuller(t).ch, calls: map[string]int{}}
+	m := sizedRev(newRevModel(claim, revs, inner, eng))
+
+	m.selectCmd(0)() // rev-a: claim ref == rev ref
+
+	if got := inner.calls["oci://demo:1.0.0"]; got != 1 {
+		t.Errorf("shared ref pulled %d times, want 1 (model must wrap puller in a caching puller)", got)
+	}
+}
+
 type errPuller struct{}
 
 func (errPuller) Pull(string) (*chart.Chart, error) { return nil, errBoom }
