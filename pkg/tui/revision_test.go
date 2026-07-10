@@ -321,6 +321,17 @@ func TestPressingApproveOnApprovedIsNoOp(t *testing.T) {
 	}
 }
 
+// On initial load Init dispatches rev-0's render but no revDiffMsg has arrived
+// yet, so the diff area must show the "rendering…" placeholder (regression: it
+// used to render blank until the first diff landed).
+func TestInitialLoadShowsRenderingPlaceholder(t *testing.T) {
+	claim, revs, puller, eng := testFixtures(t)
+	m := sizedRev(newRevModel(claim, revs, puller, eng))
+	if !strings.Contains(m.View().Content, "rendering…") {
+		t.Errorf("initial load should show the rendering placeholder\n%s", m.View().Content)
+	}
+}
+
 func TestPressingApproveOnFutureIsNoOp(t *testing.T) {
 	m := approvalModel(t)
 	// Navigate to rev-future (index 2).

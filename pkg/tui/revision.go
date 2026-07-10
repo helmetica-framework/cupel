@@ -63,6 +63,9 @@ func newRevModel(claim revision.Claim, revs []revision.Revision, puller oci.Pull
 		selected:  0,
 		diffCache: map[string]diff.Result{},
 		now:       time.Now(),
+		// Init immediately renders revision 0, so start in the loading state to
+		// show the placeholder until that first diff arrives.
+		loading: len(revs) > 0,
 	}
 }
 
