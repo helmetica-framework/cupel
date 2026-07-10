@@ -275,6 +275,69 @@ func TestListShowsApprovalStatusLines(t *testing.T) {
 	}
 }
 
+func TestApproveAffordanceShownOnlyForSelectedUnapproved(t *testing.T) {
+	m := approvalModel(t) // selected = 0 (rev-approved)
+	// Selected is approved: no affordance anywhere yet.
+	if strings.Contains(m.View().Content, "(a) approve") {
+		t.Error("approve affordance shown while selected revision is already approved")
+	}
+	// Move to rev-unapproved (index 1).
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	m = updated.(revModel)
+	if !strings.Contains(m.View().Content, "(a) approve") {
+		t.Errorf("approve affordance not shown for selected unapproved revision\n%s", m.View().Content)
+	}
+}
+
+func TestPressingApproveFlipsUnapprovedToApproved(t *testing.T) {
+	m := approvalModel(t)
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"}) // select rev-unapproved
+	m = updated.(revModel)
+
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(revModel)
+
+	if m.revs[1].ApprovedAt == nil {
+		t.Fatal("ApprovedAt still nil after pressing a")
+	}
+	if !m.revs[1].ApprovedAt.Equal(fixedNow) {
+		t.Errorf("ApprovedAt = %v, want m.now %v", m.revs[1].ApprovedAt, fixedNow)
+	}
+	want := "approved at: " + fixedNow.Format("2006-01-02 15:04")
+	if !strings.Contains(m.View().Content, want) {
+		t.Errorf("view missing %q after approval\n%s", want, m.View().Content)
+	}
+}
+
+func TestPressingApproveOnApprovedIsNoOp(t *testing.T) {
+	m := approvalModel(t) // selected = 0 (rev-approved, past timestamp)
+	before := *m.revs[0].ApprovedAt
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(revModel)
+
+	if !m.revs[0].ApprovedAt.Equal(before) {
+		t.Errorf("ApprovedAt changed on no-op approve: %v -> %v", before, *m.revs[0].ApprovedAt)
+	}
+}
+
+func TestPressingApproveOnFutureIsNoOp(t *testing.T) {
+	m := approvalModel(t)
+	// Navigate to rev-future (index 2).
+	for i := 0; i < 2; i++ {
+		updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+		m = updated.(revModel)
+	}
+	before := *m.revs[2].ApprovedAt
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(revModel)
+
+	if !m.revs[2].ApprovedAt.Equal(before) {
+		t.Errorf("future revision changed on approve: %v -> %v", before, *m.revs[2].ApprovedAt)
+	}
+}
+
 type errPuller struct{}
 
 func (errPuller) Pull(string) (*chart.Chart, error) { return nil, errBoom }

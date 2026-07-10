@@ -7,6 +7,7 @@ metadata:
 spec:
   ociUrl: oci://ghcr.io/stefanprodan/charts/podinfo
   version: 6.5.0
+  approvedAt: "2026-07-03T15:00:00Z"
   values:
     replicaCount: 3
     ui:

@@ -170,7 +170,8 @@ func (m *revModel) repaintSelected() {
 
 // Update handles resize, key navigation over the revision list, and incoming
 // revDiffMsg results. Selecting a revision renders it (or repaints from cache);
-// scroll keys drive both diff viewports in lockstep.
+// scroll keys drive both diff viewports in lockstep; `a` approves the selected
+// unapproved revision (in-memory stub).
 func (m revModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -200,6 +201,17 @@ func (m revModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, (&m).applySelection(m.selected - 1)
 		case "down", "j":
 			return m, (&m).applySelection(m.selected + 1)
+		case "a":
+			if len(m.revs) > 0 {
+				if state, _ := approval(m.revs[m.selected], m.now); state == approvalNone {
+					now := m.now
+					m.revs[m.selected].ApprovedAt = &now
+					// TODO: replace with a k8s client that patches spec.approvedAt on
+					// the InstanceRevision; this only updates in-memory state so the
+					// view reflects the approval.
+				}
+			}
+			return m, nil
 		default:
 			var cmdL, cmdR tea.Cmd
 			m.left, cmdL = m.left.Update(msg)

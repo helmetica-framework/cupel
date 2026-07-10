@@ -70,8 +70,15 @@ diffed like weigh.
 | Key | Action |
 | --- | ------ |
 | `↑` / `↓`, `j` / `k` | select a revision |
+| `a` | approve the selected unapproved revision |
 | `PgUp` / `PgDn` | scroll both diff columns in lockstep |
 | `q`, `esc`, `ctrl-c` | quit |
+
+Each revision shows an approval status line under its name: green `approved at:`
+with the timestamp for approved revisions, red `not approved` for pending ones
+(with an `(a) approve` hint when selected), and gray for a future approval date.
+Approving is currently in-memory only — it updates the view but does not yet
+write back to the cluster.
 
 ## How it works
 
