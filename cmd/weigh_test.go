@@ -9,7 +9,9 @@ import (
 	"helm.sh/helm/v4/pkg/chart/loader"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
 
+	"github.com/helmetica-framework/cupel/pkg/diff"
 	"github.com/helmetica-framework/cupel/pkg/oci"
+	"github.com/helmetica-framework/cupel/pkg/source"
 )
 
 // fakePuller returns preloaded charts keyed by ref, implementing oci.Puller.
@@ -40,12 +42,27 @@ func loadChart(t *testing.T, path string) *chart.Chart {
 	return ch
 }
 
-func TestComputeDiffIdenticalChartsHaveNoChanges(t *testing.T) {
-	ch := loadChart(t, "../pkg/render/testdata/demo")
-	p := fakePuller{charts: map[string]*chart.Chart{"a": ch, "b": ch}}
-	res, err := computeDiff(p, "linewise", "a", "b")
+func linewise(t *testing.T) diff.Engine {
+	t.Helper()
+	eng, err := diff.Get("linewise")
 	if err != nil {
-		t.Fatalf("computeDiff: %v", err)
+		t.Fatalf("engine: %v", err)
+	}
+	return eng
+}
+
+// Two identical OCI sources diff to no changes, and weighSources returns each
+// source's label (the ref) in order.
+func TestWeighSourcesIdenticalHaveNoChanges(t *testing.T) {
+	ch := loadChart(t, "../pkg/render/testdata/demo")
+	p := fakePuller{charts: map[string]*chart.Chart{"oci://a": ch, "oci://b": ch}}
+
+	la, lb, res, err := weighSources(source.OCI("oci://a"), source.OCI("oci://b"), p, linewise(t))
+	if err != nil {
+		t.Fatalf("weighSources: %v", err)
+	}
+	if la != "oci://a" || lb != "oci://b" {
+		t.Errorf("labels = (%q,%q), want (oci://a, oci://b)", la, lb)
 	}
 	added, removed := res.Counts()
 	if added != 0 || removed != 0 {
@@ -56,31 +73,23 @@ func TestComputeDiffIdenticalChartsHaveNoChanges(t *testing.T) {
 	}
 }
 
-func TestComputeDiffUnknownEngineErrors(t *testing.T) {
-	ch := loadChart(t, "../pkg/render/testdata/demo")
-	p := fakePuller{charts: map[string]*chart.Chart{"a": ch, "b": ch}}
-	if _, err := computeDiff(p, "nope", "a", "b"); err == nil {
-		t.Fatal("expected error for unknown engine")
-	}
-}
-
-func TestComputeDiffPropagatesPullError(t *testing.T) {
+func TestWeighSourcesPropagatesPullError(t *testing.T) {
 	p := fakePuller{err: errBoom}
-	if _, err := computeDiff(p, "linewise", "a", "b"); err == nil {
+	if _, _, _, err := weighSources(source.OCI("oci://a"), source.OCI("oci://b"), p, linewise(t)); err == nil {
 		t.Fatal("expected pull error to propagate")
 	} else if !strings.Contains(err.Error(), "boom") {
 		t.Errorf("error = %v, want it to mention boom", err)
 	}
 }
 
-func TestComputeDiffPropagatesRenderError(t *testing.T) {
+func TestWeighSourcesPropagatesRenderError(t *testing.T) {
 	// A chart whose template calls the `fail` function cannot render.
 	bad := &chart.Chart{
 		Metadata:  &chart.Metadata{APIVersion: "v2", Name: "bad", Version: "0.1.0"},
 		Templates: []*common.File{{Name: "templates/x.yaml", Data: []byte(`{{ fail "boom" }}`)}},
 	}
-	p := fakePuller{charts: map[string]*chart.Chart{"a": bad, "b": bad}}
-	if _, err := computeDiff(p, "linewise", "a", "b"); err == nil {
+	p := fakePuller{charts: map[string]*chart.Chart{"oci://a": bad, "oci://b": bad}}
+	if _, _, _, err := weighSources(source.OCI("oci://a"), source.OCI("oci://b"), p, linewise(t)); err == nil {
 		t.Fatal("expected render error to propagate")
 	} else if !strings.Contains(err.Error(), "rendering") {
 		t.Errorf("error = %v, want it to mention rendering", err)
@@ -97,44 +106,23 @@ func weighFor(args ...string) *cobra.Command {
 	return cmd
 }
 
-func TestWeighOCIModeRequiresTwoPositional(t *testing.T) {
-	if err := weighFor("only-one").Execute(); err == nil {
-		t.Fatal("expected error: OCI mode needs exactly 2 refs")
-	}
-}
-
-func TestWeighRevisionModeRejectsPositional(t *testing.T) {
-	err := weighFor("-r", "revs", "-c", "claim.yaml", "extra-ref").Execute()
-	if err == nil {
-		t.Fatal("expected error: revision mode takes no positional args")
-	}
-	if !strings.Contains(err.Error(), "positional") {
-		t.Errorf("error should mention positional args, got: %v", err)
-	}
-}
-
-func TestWeighRevisionModeRequiresBothFlags(t *testing.T) {
-	for _, args := range [][]string{{"-r", "revs"}, {"-c", "claim.yaml"}} {
-		err := weighFor(args...).Execute()
-		if err == nil {
-			t.Fatalf("%v: expected error, revision mode requires both -r and -c", args)
-		}
-		if !strings.Contains(err.Error(), "required") {
-			t.Errorf("%v: error should mention both flags are required, got: %v", args, err)
+func TestWeighRequiresExactlyTwoArgs(t *testing.T) {
+	for _, args := range [][]string{{}, {"oci://a"}, {"oci://a", "oci://b", "oci://c"}} {
+		if err := weighFor(args...).Execute(); err == nil {
+			t.Errorf("%v: expected ExactArgs(2) error", args)
 		}
 	}
 }
 
-// With both flags and no positional args, validation passes and the command
-// proceeds to loading — so a bogus claim path yields a claim load error, not an
-// arg-shape error and not an unknown-flag error.
-func TestWeighRevisionModeAcceptsFlagsThenLoads(t *testing.T) {
-	err := weighFor("-r", "/no/such/dir", "-c", "/no/such/claim.yaml").Execute()
+// A non-oci operand is treated as a claim file; a bogus path surfaces the
+// claim load error (from source.Parse) before the TUI opens.
+func TestWeighBadOperandSurfacesParseError(t *testing.T) {
+	err := weighFor("oci://a", "/no/such/claim.yaml").Execute()
 	if err == nil {
-		t.Fatal("expected a claim load error")
+		t.Fatal("expected a parse error for the bad operand")
 	}
-	if !strings.Contains(err.Error(), "claim") {
-		t.Errorf("expected a claim load error (passed arg validation), got: %v", err)
+	if !strings.Contains(err.Error(), "/no/such/claim.yaml") {
+		t.Errorf("error should name the bad operand, got: %v", err)
 	}
 }
 
