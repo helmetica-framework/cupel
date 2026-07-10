@@ -23,6 +23,10 @@ var (
 	styleSame    = lipgloss.NewStyle().Faint(true)
 	stylePlus    = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	styleMinus   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+
+	styleApproved   = lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // green
+	styleUnapproved = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))  // red
+	styleFuture     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))  // gray
 )
 
 // Model is the Bubble Tea model for the side-by-side diff viewer.

@@ -235,6 +235,109 @@ func TestModelCachesSharedChartPulls(t *testing.T) {
 	}
 }
 
+// fixedNow is a stable clock for approval rendering tests.
+var fixedNow = time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+
+// approvalModel builds a sized revision model with a pinned clock and three
+// revisions: approved (past), unapproved (nil), and future-approved.
+func approvalModel(t *testing.T) revModel {
+	t.Helper()
+	_, _, puller, eng := testFixtures(t)
+	claim := revision.Claim{OCI: "oci://demo", Version: "1.0.0", Values: map[string]any{"replicas": 2}}
+	past := time.Date(2026, 7, 8, 16, 1, 0, 0, time.UTC)
+	future := time.Date(2026, 7, 20, 16, 1, 0, 0, time.UTC)
+	revs := []revision.Revision{
+		{Name: "rev-approved", Created: time.Unix(1, 0), OCI: "oci://demo", Version: "1.0.0", ApprovedAt: &past},
+		{Name: "rev-unapproved", Created: time.Unix(2, 0), OCI: "oci://demo", Version: "1.0.0", ApprovedAt: nil},
+		{Name: "rev-future", Created: time.Unix(3, 0), OCI: "oci://demo", Version: "1.0.0", ApprovedAt: &future},
+	}
+	m := newRevModel(claim, revs, puller, eng)
+	m.now = fixedNow
+	// Wide enough that the full "approved at: …" status line fits the list
+	// column without truncation (listColMax = 34).
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
+	return updated.(revModel)
+}
+
+func TestListShowsApprovalStatusLines(t *testing.T) {
+	view := approvalModel(t).View().Content
+	for _, want := range []string{
+		"rev-approved",
+		"approved at: 2026-07-08 16:01",
+		"rev-unapproved",
+		"not approved",
+		"rev-future",
+		"approved at: 2026-07-20 16:01",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("list view missing %q\n%s", want, view)
+		}
+	}
+}
+
+func TestApproveAffordanceShownOnlyForSelectedUnapproved(t *testing.T) {
+	m := approvalModel(t) // selected = 0 (rev-approved)
+	// Selected is approved: no affordance anywhere yet.
+	if strings.Contains(m.View().Content, "(a) approve") {
+		t.Error("approve affordance shown while selected revision is already approved")
+	}
+	// Move to rev-unapproved (index 1).
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	m = updated.(revModel)
+	if !strings.Contains(m.View().Content, "(a) approve") {
+		t.Errorf("approve affordance not shown for selected unapproved revision\n%s", m.View().Content)
+	}
+}
+
+func TestPressingApproveFlipsUnapprovedToApproved(t *testing.T) {
+	m := approvalModel(t)
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"}) // select rev-unapproved
+	m = updated.(revModel)
+
+	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(revModel)
+
+	if m.revs[1].ApprovedAt == nil {
+		t.Fatal("ApprovedAt still nil after pressing a")
+	}
+	if !m.revs[1].ApprovedAt.Equal(fixedNow) {
+		t.Errorf("ApprovedAt = %v, want m.now %v", m.revs[1].ApprovedAt, fixedNow)
+	}
+	want := "approved at: " + fixedNow.Format("2006-01-02 15:04")
+	if !strings.Contains(m.View().Content, want) {
+		t.Errorf("view missing %q after approval\n%s", want, m.View().Content)
+	}
+}
+
+func TestPressingApproveOnApprovedIsNoOp(t *testing.T) {
+	m := approvalModel(t) // selected = 0 (rev-approved, past timestamp)
+	before := *m.revs[0].ApprovedAt
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(revModel)
+
+	if !m.revs[0].ApprovedAt.Equal(before) {
+		t.Errorf("ApprovedAt changed on no-op approve: %v -> %v", before, *m.revs[0].ApprovedAt)
+	}
+}
+
+func TestPressingApproveOnFutureIsNoOp(t *testing.T) {
+	m := approvalModel(t)
+	// Navigate to rev-future (index 2).
+	for i := 0; i < 2; i++ {
+		updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+		m = updated.(revModel)
+	}
+	before := *m.revs[2].ApprovedAt
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(revModel)
+
+	if !m.revs[2].ApprovedAt.Equal(before) {
+		t.Errorf("future revision changed on approve: %v -> %v", before, *m.revs[2].ApprovedAt)
+	}
+}
+
 type errPuller struct{}
 
 func (errPuller) Pull(string) (*chart.Chart, error) { return nil, errBoom }

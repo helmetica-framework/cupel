@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -14,6 +15,10 @@ import (
 	"github.com/helmetica-framework/cupel/pkg/revision"
 	"github.com/helmetica-framework/cupel/pkg/source"
 )
+
+// listColMax caps the revision-list column width. It is wide enough to show a
+// full "approved at: 2006-01-02 15:04" status line without truncation.
+const listColMax = 34
 
 // revDiffMsg carries the outcome of an asynchronous revision render+diff back
 // to Update, keyed by revision name so Update can cache it and decide whether
@@ -35,6 +40,7 @@ type revModel struct {
 	selected int
 	loading  bool
 	err      error
+	now      time.Time // model clock; drives approval status and stamps approvals
 
 	diffCache map[string]diff.Result // rendered diffs, by revision name
 
@@ -56,7 +62,25 @@ func newRevModel(claim revision.Claim, revs []revision.Revision, puller oci.Pull
 		engine:    engine,
 		selected:  0,
 		diffCache: map[string]diff.Result{},
+		now:       time.Now(),
 	}
+}
+
+// statusLine renders a revision's approval status line: the text colored by
+// state, plus the "(a) approve" affordance when a selected revision is
+// unapproved. The caller adds indentation.
+func statusLine(state approvalState, text string, selected bool) string {
+	if state == approvalNone && selected {
+		return styleUnapproved.Render(text + " (a) approve")
+	} else if state == approvalNone {
+		return styleUnapproved.Render(text)
+	}
+
+	if state == approvalApproved {
+		return styleApproved.Render(text)
+	}
+
+	return styleFuture.Render(text)
 }
 
 // revisionDiff renders the claim base and one revision through the source
@@ -146,13 +170,14 @@ func (m *revModel) repaintSelected() {
 
 // Update handles resize, key navigation over the revision list, and incoming
 // revDiffMsg results. Selecting a revision renders it (or repaints from cache);
-// scroll keys drive both diff viewports in lockstep.
+// scroll keys drive both diff viewports in lockstep; `a` approves the selected
+// unapproved revision (in-memory stub).
 func (m revModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		listW := min(28, msg.Width/4)
+		listW := min(listColMax, msg.Width/4)
 		m.colW = max((msg.Width-listW-3)/2, 1)
 		colH := max(msg.Height-headerHeight, 1)
 		if !m.ready {
@@ -176,6 +201,17 @@ func (m revModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, (&m).applySelection(m.selected - 1)
 		case "down", "j":
 			return m, (&m).applySelection(m.selected + 1)
+		case "a":
+			if len(m.revs) > 0 {
+				if state, _ := approval(m.revs[m.selected], m.now); state == approvalNone {
+					now := m.now
+					m.revs[m.selected].ApprovedAt = &now
+					// TODO: replace with a k8s client that patches spec.approvedAt on
+					// the InstanceRevision; this only updates in-memory state so the
+					// view reflects the approval.
+				}
+			}
+			return m, nil
 		default:
 			var cmdL, cmdR tea.Cmd
 			m.left, cmdL = m.left.Update(msg)
@@ -206,15 +242,16 @@ func (m revModel) View() tea.View {
 	return v
 }
 
-// revContent builds the screen text: the revision list column, a header with
-// the claim ref, selected revision, and change counts, and the diff area
-// (a "rendering…" or error placeholder, otherwise the two viewports).
+// revContent builds the screen text: the revision list column (two lines per
+// revision — name plus a color-coded approval status line), a header with the
+// claim ref, selected revision, and change counts, and the diff area (a
+// "rendering…" or error placeholder, otherwise the two viewports).
 func (m revModel) revContent() string {
 	if !m.ready {
 		return "initializing…"
 	}
 
-	listW := min(28, m.width/4)
+	listW := min(listColMax, m.width/4)
 
 	// Build the revision list column.
 	var listLines []string
@@ -227,7 +264,11 @@ func (m revModel) revContent() string {
 		if i != m.selected {
 			line = lipgloss.NewStyle().Faint(true).Render(line)
 		}
-		listLines = append(listLines, line)
+		state, text := approval(rev, m.now)
+		// Truncate to the column so a long status line can't widen the list
+		// column past its budget and shove the diff panes off-screen.
+		status := ansi.Truncate("    "+statusLine(state, text, i == m.selected), listW, "…")
+		listLines = append(listLines, line, status)
 	}
 	listColumn := strings.Join(listLines, "\n")
 
