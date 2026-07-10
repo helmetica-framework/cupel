@@ -39,8 +39,11 @@ func weighSources(a, b source.Source, puller oci.Puller, engine diff.Engine) (st
 		Manifest: bMan,
 		Ref:      bLabel,
 	})
+	if err != nil {
+		return "", "", diff.Result{}, err
+	}
 
-	return aLabel, bLabel, res, err
+	return aLabel, bLabel, res, nil
 }
 
 // newWeighCmd builds the weigh command: a static side-by-side diff of two
