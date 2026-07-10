@@ -10,6 +10,7 @@ require (
 	github.com/helmetica-framework/chrysopoeia v0.0.0-20260709114857-c23ff462e6ea
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/tools v0.45.0
 	helm.sh/helm/v4 v4.2.2
 	sigs.k8s.io/yaml v1.6.0
 )

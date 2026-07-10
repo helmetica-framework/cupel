@@ -1,0 +1,167 @@
+package source
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"helm.sh/helm/v4/pkg/chart/loader"
+	chart "helm.sh/helm/v4/pkg/chart/v2"
+
+	"github.com/helmetica-framework/cupel/pkg/revision"
+)
+
+// demoChartPath is the shared render fixture, reused so source renders the same
+// manifest the render package tests assert on.
+const demoChartPath = "../render/testdata/demo"
+
+// fakePuller returns the demo chart for any ref and records the refs it was
+// asked to pull, so tests can assert which ref a Source built.
+type fakePuller struct {
+	ch    *chart.Chart
+	pulls []string
+}
+
+func newFakePuller(t *testing.T) *fakePuller {
+	t.Helper()
+	raw, err := loader.Load(demoChartPath)
+	if err != nil {
+		t.Fatalf("load demo chart: %v", err)
+	}
+	ch, ok := raw.(*chart.Chart)
+	if !ok {
+		t.Fatalf("loaded value is not *chart.Chart")
+	}
+	return &fakePuller{ch: ch}
+}
+
+func (p *fakePuller) Pull(ref string) (*chart.Chart, error) {
+	p.pulls = append(p.pulls, ref)
+	return p.ch, nil
+}
+
+func (p *fakePuller) lastPull() string {
+	if len(p.pulls) == 0 {
+		return ""
+	}
+	return p.pulls[len(p.pulls)-1]
+}
+
+func TestOCIRendersDefaultsLabelIsRef(t *testing.T) {
+	p := newFakePuller(t)
+	manifest, label, err := OCI("oci://repo/demo:1.0.0").Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if p.lastPull() != "oci://repo/demo:1.0.0" {
+		t.Errorf("pulled %q, want the raw ref", p.lastPull())
+	}
+	if label != "oci://repo/demo:1.0.0" {
+		t.Errorf("label = %q, want the ref", label)
+	}
+	if !strings.Contains(manifest, "replicas: 2") { // chart default, no overlay
+		t.Errorf("manifest missing default replicas:\n%s", manifest)
+	}
+}
+
+func TestClaimAppliesOverlayLabelIsOCIVersion(t *testing.T) {
+	p := newFakePuller(t)
+	c := revision.Claim{
+		OCI:     "oci://repo/demo",
+		Version: "2.0.0",
+		Values:  map[string]any{"replicas": 5},
+	}
+	manifest, label, err := Claim(c).Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if p.lastPull() != "oci://repo/demo:2.0.0" {
+		t.Errorf("pulled %q, want oci:version", p.lastPull())
+	}
+	if label != "oci://repo/demo:2.0.0" {
+		t.Errorf("label = %q, want oci:version", label)
+	}
+	if !strings.Contains(manifest, "replicas: 5") {
+		t.Errorf("claim overlay not applied:\n%s", manifest)
+	}
+}
+
+func TestRevisionAppliesOverlayLabelIsName(t *testing.T) {
+	p := newFakePuller(t)
+	r := revision.Revision{
+		Name:    "podinfo-r3",
+		OCI:     "oci://repo/demo",
+		Version: "3.0.0",
+		Values:  map[string]any{"replicas": 7},
+	}
+	manifest, label, err := Revision(r).Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if p.lastPull() != "oci://repo/demo:3.0.0" {
+		t.Errorf("pulled %q, want oci:version", p.lastPull())
+	}
+	if label != "podinfo-r3" {
+		t.Errorf("label = %q, want revision name", label)
+	}
+	if !strings.Contains(manifest, "replicas: 7") {
+		t.Errorf("revision overlay not applied:\n%s", manifest)
+	}
+}
+
+func TestParseOCIRefIsOCISource(t *testing.T) {
+	p := newFakePuller(t)
+	src, err := Parse("oci://repo/demo:1.0.0")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	_, label, err := src.Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if label != "oci://repo/demo:1.0.0" { // OCI label is the raw ref
+		t.Errorf("label = %q, want the ref (OCI source)", label)
+	}
+}
+
+func TestParseClaimFileIsClaimSource(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "claim.yaml")
+	writeFile(t, path, "oci: oci://repo/demo\nversion: 4.0.0\nvalues:\n  replicas: 9\n")
+
+	p := newFakePuller(t)
+	src, err := Parse(path)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	manifest, label, err := src.Render(p)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if label != "oci://repo/demo:4.0.0" {
+		t.Errorf("label = %q, want oci:version (claim source)", label)
+	}
+	if !strings.Contains(manifest, "replicas: 9") {
+		t.Errorf("claim values not applied:\n%s", manifest)
+	}
+}
+
+func TestParseBadClaimPathErrors(t *testing.T) {
+	_, err := Parse(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
+	if err == nil {
+		t.Fatal("expected an error for a missing claim file")
+	}
+	// LoadClaim's message stands unwrapped: "reading claim file <path>: ...".
+	if !strings.Contains(err.Error(), "reading claim file") ||
+		!strings.Contains(err.Error(), "does-not-exist.yaml") {
+		t.Errorf("want LoadClaim's path-named error, got: %v", err)
+	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
