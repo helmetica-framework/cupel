@@ -1,5 +1,7 @@
-// Package revision loads a claim base and a directory of InstanceRevision
-// manifests, reducing each to the fields cupel needs to render and diff them.
+// Package revision loads a claim base and its InstanceRevisions — from the
+// cluster via Client, or from local files (deprecated, being replaced) —
+// reducing each to the fields cupel needs to render and diff them. Client
+// also writes approvals back to the cluster.
 package revision
 
 import (

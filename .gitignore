@@ -27,6 +27,3 @@ test/*
 *.swp
 *.swo
 *~
-
-# Superpowers design specs / working docs
-docs/superpowers/
