@@ -1,8 +1,6 @@
 package source
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -112,7 +110,8 @@ func TestRevisionAppliesOverlayLabelIsName(t *testing.T) {
 
 func TestParseOCIRefIsOCISource(t *testing.T) {
 	p := newFakePuller(t)
-	src, err := Parse("oci://repo/demo:1.0.0")
+	// nil resolver: an oci:// operand must never consult it.
+	src, err := Parse("oci://repo/demo:1.0.0", nil)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -125,16 +124,19 @@ func TestParseOCIRefIsOCISource(t *testing.T) {
 	}
 }
 
-func TestParseClaimFileIsClaimSource(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "claim.yaml")
-	writeFile(t, path, "oci: oci://repo/demo\nversion: 4.0.0\nvalues:\n  replicas: 9\n")
+func TestParseClaimOperandUsesResolver(t *testing.T) {
+	resolve := func(operand string) (revision.Claim, error) {
+		if operand != "podinfo/my-app" {
+			t.Errorf("resolver got %q", operand)
+		}
+		return revision.Claim{OCI: "oci://repo/demo", Version: "4.0.0", Values: map[string]any{"replicas": 9}}, nil
+	}
 
-	p := newFakePuller(t)
-	src, err := Parse(path)
+	src, err := Parse("podinfo/my-app", resolve)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
+	p := newFakePuller(t)
 	manifest, label, err := src.Render(p)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
@@ -147,21 +149,17 @@ func TestParseClaimFileIsClaimSource(t *testing.T) {
 	}
 }
 
-func TestParseBadClaimPathErrors(t *testing.T) {
-	_, err := Parse(filepath.Join(t.TempDir(), "does-not-exist.yaml"))
-	if err == nil {
-		t.Fatal("expected an error for a missing claim file")
+func TestParseResolverErrorPropagates(t *testing.T) {
+	resolve := func(string) (revision.Claim, error) {
+		return revision.Claim{}, errBoomSource
 	}
-	// LoadClaim's message stands unwrapped: "reading claim file <path>: ...".
-	if !strings.Contains(err.Error(), "reading claim file") ||
-		!strings.Contains(err.Error(), "does-not-exist.yaml") {
-		t.Errorf("want LoadClaim's path-named error, got: %v", err)
+	if _, err := Parse("podinfo/nope", resolve); err == nil {
+		t.Fatal("expected resolver error to propagate")
 	}
 }
 
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", path, err)
-	}
-}
+var errBoomSource = boomErr("boom")
+
+type boomErr string
+
+func (e boomErr) Error() string { return string(e) }

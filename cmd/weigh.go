@@ -8,6 +8,7 @@ import (
 
 	"github.com/helmetica-framework/cupel/pkg/diff"
 	"github.com/helmetica-framework/cupel/pkg/oci"
+	"github.com/helmetica-framework/cupel/pkg/revision"
 	"github.com/helmetica-framework/cupel/pkg/source"
 	"github.com/helmetica-framework/cupel/pkg/tui"
 )
@@ -47,21 +48,34 @@ func weighSources(a, b source.Source, puller oci.Puller, engine diff.Engine) (st
 }
 
 // newWeighCmd builds the weigh command: a static side-by-side diff of two
-// sources, each an OCI chart ref ("oci://…") or a claim file path, auto-detected
-// by source.Parse.
+// sources, each an OCI chart ref ("oci://…") or a cluster claim reference
+// ("<kind>/<name>"), auto-detected by source.Parse.
 func newWeighCmd(puller oci.Puller) *cobra.Command {
-	var engineName string
+	var engineName, namespace string
 	cmd := &cobra.Command{
 		Use:   "weigh <A> <B>",
 		Short: "Balance one source against another and see which way it tips.",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := source.Parse(args[0])
+			// resolve turns a <kind>/<name> operand into its cluster claim. It
+			// has to dial lazily (revision.NewClient inside the closure), so
+			// pure oci://-vs-oci:// weighs never touch the cluster, then
+			// LoadClaim with cmd.Context() and resolveNamespace(namespace).
+			resolve := func(operand string) (revision.Claim, error) {
+				c, err := revision.NewClient()
+				if err != nil {
+					return revision.Claim{}, err
+				}
+
+				return c.LoadClaim(cmd.Context(), operand, resolveNamespace(namespace))
+			}
+
+			a, err := source.Parse(args[0], resolve)
 			if err != nil {
 				return err
 			}
 
-			b, err := source.Parse(args[1])
+			b, err := source.Parse(args[1], resolve)
 			if err != nil {
 				return err
 			}
@@ -79,6 +93,7 @@ func newWeighCmd(puller oci.Puller) *cobra.Command {
 			return tui.Run(aLabel, bLabel, result)
 		},
 	}
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace (defaults to the kubeconfig context namespace)")
 	// hidden engine seam; defaults to "linewise", not advertised yet.
 	cmd.Flags().StringVar(&engineName, "engine", "linewise", "diff engine")
 	_ = cmd.Flags().MarkHidden("engine")

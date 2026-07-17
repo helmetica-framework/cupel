@@ -1,5 +1,6 @@
-// Package source turns a diff operand — an OCI chart ref or a claim file — into
-// a renderable manifest, so any two sources diff through one code path.
+// Package source turns a diff operand — an OCI chart ref or a cluster claim
+// reference — into a renderable manifest, so any two sources diff through one
+// code path.
 package source
 
 import (
@@ -54,16 +55,20 @@ func Revision(r revision.Revision) Source {
 	}
 }
 
-// Parse turns a weigh CLI operand into a Source: an "oci://"-prefixed operand is
-// an OCI ref; anything else is treated as a claim file path and loaded (load
-// errors, including a missing/invalid file, surface here with the path).
-func Parse(operand string) (Source, error) {
+// ClaimResolver turns a <kind>/<name> claim operand into its Claim, typically
+// by fetching the instance from the cluster.
+type ClaimResolver func(operand string) (revision.Claim, error)
+
+// Parse turns a weigh CLI operand into a Source: an "oci://"-prefixed operand
+// is an OCI ref; anything else is a claim reference handed to resolve
+// (resolver errors surface unwrapped — they already name the operand).
+// resolve must be non-nil unless every operand is an oci:// ref.
+func Parse(operand string, resolve ClaimResolver) (Source, error) {
 	if strings.HasPrefix(operand, "oci://") {
 		return OCI(operand), nil
 	}
 
-	// LoadClaim already names the path in its errors; don't re-wrap.
-	c, err := revision.LoadClaim(operand)
+	c, err := resolve(operand)
 	if err != nil {
 		return nil, err
 	}

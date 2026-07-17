@@ -114,15 +114,14 @@ func TestWeighRequiresExactlyTwoArgs(t *testing.T) {
 	}
 }
 
-// A non-oci operand is treated as a claim file; a bogus path surfaces the
-// claim load error (from source.Parse) before the TUI opens.
-func TestWeighBadOperandSurfacesParseError(t *testing.T) {
-	err := weighFor("oci://a", "/no/such/claim.yaml").Execute()
+// A non-oci operand is a cluster claim reference; without a reachable cluster
+// the resolver's client construction error surfaces before the TUI opens.
+func TestWeighClaimOperandWithoutClusterErrors(t *testing.T) {
+	t.Setenv("KUBECONFIG", "/no/such/kubeconfig")
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	err := weighFor("oci://a", "podinfo/my-app").Execute()
 	if err == nil {
-		t.Fatal("expected a parse error for the bad operand")
-	}
-	if !strings.Contains(err.Error(), "/no/such/claim.yaml") {
-		t.Errorf("error should name the bad operand, got: %v", err)
+		t.Fatal("expected an error for a claim operand without a cluster")
 	}
 }
 
