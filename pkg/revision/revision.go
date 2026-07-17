@@ -14,6 +14,7 @@ import (
 	"time"
 
 	chrysov1 "github.com/helmetica-framework/chrysopoeia/api/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/yaml"
 )
 
@@ -24,6 +25,9 @@ type Claim struct {
 	OCI     string         `json:"oci"`
 	Version string         `json:"version"`
 	Values  map[string]any `json:"values"`
+	// UID identifies the claim instance in the cluster; its InstanceRevisions
+	// carry it as their controller ownerReference.
+	UID types.UID `json:"-"`
 }
 
 // Revision is a parsed InstanceRevision reduced to what the diff needs: its

@@ -5,17 +5,97 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	chrysov1 "github.com/helmetica-framework/chrysopoeia/api/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 // Client loads claims and revisions from a cluster and writes approvals back.
 type Client struct {
 	kube client.Client
+}
+
+// NewClient connects to the cluster the environment points at (KUBECONFIG,
+// ~/.kube/config, or in-cluster) with the chrysopoeia types registered.
+func NewClient() (*Client, error) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(chrysov1.AddToScheme(scheme))
+
+	cfg, err := config.GetConfig()
+	if err != nil {
+		return nil, fmt.Errorf("getting config for kube client: %w", err)
+	}
+
+	c, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return nil, fmt.Errorf("initializing kube client: %w", err)
+	}
+
+	return &Client{
+		kube: c,
+	}, nil
+}
+
+// LoadClaim fetches the claim instance named by operand ("<kind>/<name>",
+// kubectl-style, e.g. "podinfo/my-app") in ns. The kind segment resolves
+// through the cluster's RESTMapper to one of chrysopoeia's dynamically
+// generated CRDs, so the instance is read as unstructured. The returned Claim
+// carries spec.ociUrl/version/values plus the instance UID that its
+// InstanceRevisions name as controller owner.
+func (c *Client) LoadClaim(ctx context.Context, operand, ns string) (Claim, error) {
+	split := strings.Split(operand, "/")
+
+	if len(split) != 2 {
+		return Claim{}, fmt.Errorf("wrong shape for claim parameter, want: kind/name have: %s", operand)
+	}
+
+	kind := split[0]
+	name := split[1]
+
+	gvk, err := c.kube.RESTMapper().KindFor(schema.GroupVersionResource{Resource: kind})
+	if err != nil {
+		return Claim{}, fmt.Errorf("getting gvk for claim of kind %s: %w", kind, err)
+	}
+
+	u := unstructured.Unstructured{}
+	u.SetGroupVersionKind(gvk)
+
+	err = c.kube.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, &u)
+	if err != nil {
+		return Claim{}, fmt.Errorf("getting claim %s: %w", operand, err)
+	}
+
+	claim := Claim{UID: u.GetUID()}
+
+	var found bool
+
+	claim.OCI, found, err = unstructured.NestedString(u.Object, "spec", "ociUrl")
+	if err != nil || !found {
+		return Claim{}, fmt.Errorf("claim %s has no usable spec.ociUrl (found=%t): %v", operand, found, err)
+	}
+
+	claim.Version, found, err = unstructured.NestedString(u.Object, "spec", "version")
+	if err != nil || !found {
+		return Claim{}, fmt.Errorf("claim %s has no usable spec.version (found=%t): %v", operand, found, err)
+	}
+
+	// values is optional: absent means "no overlay" (nil map, no error); only a
+	// present-but-wrong-typed value errors.
+	claim.Values, _, err = unstructured.NestedMap(u.Object, "spec", "values")
+	if err != nil {
+		return Claim{}, fmt.Errorf("getting values from claim %s: %w", operand, err)
+	}
+
+	return claim, nil
 }
 
 // LoadRevisions lists the InstanceRevisions in ns that are controller-owned by
