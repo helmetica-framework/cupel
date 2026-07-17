@@ -1,0 +1,19 @@
+# An instance of the CRD generated from crdsource.yaml — this is the claim.
+# chrysopoeia generates the CRD with kind Instance (the chart carries no CRD
+# name metadata) in group <sourceName>.helmetica-bundles.io, storage version
+# "bundle". The revision controller creates an owned InstanceRevision for each
+# distinct (ociUrl, version, values) state this instance passes through.
+#
+# Browse its revisions with:
+#   cupel ledger instance/my-app
+apiVersion: podinfo.helmetica-bundles.io/bundle
+kind: Instance
+metadata:
+  name: my-app
+spec:
+  ociUrl: oci://ghcr.io/stefanprodan/charts/podinfo
+  version: 6.5.0
+  values:
+    replicaCount: 1
+    ui:
+      message: "hello from the claim"

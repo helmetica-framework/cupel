@@ -1,0 +1,22 @@
+# A chrysopoeia CustomResourceDefinitionSource: generates a namespaced CRD
+# (kind Instance, group podinfo.helmetica-bundles.io) from the chart referenced
+# by the Flux OCIRepository below. Instances of that CRD are the claims cupel
+# diffs against.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+spec:
+  interval: 10m
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    tag: 6.5.0
+---
+apiVersion: helmetica.io/v1
+kind: CustomResourceDefinitionSource
+metadata:
+  name: podinfo
+spec:
+  reference:
+    kind: OCIRepository
+    name: podinfo

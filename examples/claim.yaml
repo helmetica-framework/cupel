@@ -1,7 +1,0 @@
-# The base every revision is diffed against.
-oci: oci://ghcr.io/stefanprodan/charts/podinfo
-version: 6.5.0
-values:
-  replicaCount: 1
-  ui:
-    message: "hello from the claim"

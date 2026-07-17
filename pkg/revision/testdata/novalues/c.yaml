@@ -1,8 +1,0 @@
-apiVersion: helmetica.io/v1
-kind: InstanceRevision
-metadata:
-  name: rev-c
-  namespace: default
-  creationTimestamp: "2026-07-09T10:00:00Z"
-spec:
-  version: 6.15.0
