@@ -15,18 +15,19 @@ import (
 
 // newLedgerCmd builds the ledger command: an interactive browser that diffs a
 // claim instance's InstanceRevisions against the claim itself, opening the
-// revision TUI. The single operand names the claim (<kind>/<name>, resolved
-// in-cluster); -n overrides the kubeconfig context namespace.
+// revision TUI. The single operand names the claim
+// (<resource>[.<group>]/<name>, resolved in-cluster); -n overrides the
+// kubeconfig context namespace.
 func newLedgerCmd(puller oci.Puller) *cobra.Command {
 	var engineName, namespace string
 	cmd := &cobra.Command{
-		Use:   "ledger <kind>/<name>",
+		Use:   "ledger <resource>[.<group>]/<name>",
 		Short: "Leaf through a claim's revisions in the cluster.",
 		Args: cobra.MatchAll(cobra.ExactArgs(1), func(cmd *cobra.Command, args []string) error {
 			// Mirrors LoadClaim's shape check so anything cobra accepts the
 			// client accepts too (k8s names cannot contain "/").
 			if parts := strings.Split(args[0], "/"); len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-				return fmt.Errorf("operand %q must be <kind>/<name>, e.g. podinfo/my-app", args[0])
+				return fmt.Errorf("operand %q must be <resource>[.<group>]/<name>, e.g. instance/my-app or instances.podinfo.helmetica-bundles.io/my-app", args[0])
 			}
 			return nil
 		}),

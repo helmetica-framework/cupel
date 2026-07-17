@@ -316,6 +316,68 @@ func TestLoadClaimWrongTypedValuesErrors(t *testing.T) {
 	}
 }
 
+// multiGroupClaimClient builds a Client over a fake cluster where two chart
+// groups both expose kind Instance (chrysopoeia's fallback kind), mirroring a
+// cluster with several CustomResourceDefinitionSources installed. Only the
+// podinfo group holds an instance named my-app.
+func multiGroupClaimClient(t *testing.T) *Client {
+	t.Helper()
+	podinfoGV := schema.GroupVersion{Group: "podinfo.helmetica-bundles.io", Version: "bundle"}
+	redisGV := schema.GroupVersion{Group: "redis.helmetica-bundles.io", Version: "bundle"}
+
+	s := runtime.NewScheme()
+	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{podinfoGV, redisGV})
+	for _, gv := range []schema.GroupVersion{podinfoGV, redisGV} {
+		gvk := gv.WithKind("Instance")
+		s.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+		s.AddKnownTypeWithName(gv.WithKind("InstanceList"), &unstructured.UnstructuredList{})
+		mapper.Add(gvk, meta.RESTScopeNamespace)
+	}
+
+	u := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "podinfo.helmetica-bundles.io/bundle",
+		"kind":       "Instance",
+		"metadata": map[string]any{
+			"name":      "my-app",
+			"namespace": "prod",
+			"uid":       string(ownerUID),
+		},
+		"spec": map[string]any{
+			"ociUrl":  "oci://ghcr.io/x/podinfo",
+			"version": "6.5.0",
+		},
+	}}
+
+	kube := fake.NewClientBuilder().WithScheme(s).WithRESTMapper(mapper).WithObjects(u).Build()
+	return &Client{kube: kube}
+}
+
+// A resource.group-qualified kind segment (kubectl style) pins the group, so
+// identical kinds across chart groups stay unambiguous.
+func TestLoadClaimQualifiedResourceDisambiguates(t *testing.T) {
+	c := multiGroupClaimClient(t)
+
+	claim, err := c.LoadClaim(context.Background(), "instances.podinfo.helmetica-bundles.io/my-app", "prod")
+	if err != nil {
+		t.Fatalf("LoadClaim: %v", err)
+	}
+	if claim.OCI != "oci://ghcr.io/x/podinfo" {
+		t.Errorf("OCI = %q", claim.OCI)
+	}
+	if claim.UID != ownerUID {
+		t.Errorf("UID = %q, want %q", claim.UID, ownerUID)
+	}
+}
+
+func TestLoadClaimBareKindAmbiguousAcrossGroupsErrors(t *testing.T) {
+	c := multiGroupClaimClient(t)
+
+	_, err := c.LoadClaim(context.Background(), "instance/my-app", "prod")
+	if err == nil {
+		t.Fatal("expected ambiguity error for bare kind matching multiple groups")
+	}
+}
+
 func TestLoadClaimBadOperandShape(t *testing.T) {
 	c := claimClient(t)
 	for _, operand := range []string{"no-slash-here", "/no-kind", "no-name/"} {

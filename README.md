@@ -19,7 +19,7 @@ This opens an interactive side-by-side view of the rendered manifests:
 - red `-` lines were removed, green `+` lines were added, dim lines are unchanged
 - the header shows `refA → refB` and a `+N -M` change summary
 
-Each operand may also be a claim reference (`<kind>/<name>`, resolved in the cluster; `-n` overrides the namespace) instead of an OCI ref, so you can simulate an update by diffing a claim against a chart:
+Each operand may also be a claim reference (`<resource>[.<group>]/<name>`, resolved in the cluster; `-n` overrides the namespace) instead of an OCI ref, so you can simulate an update by diffing a claim against a chart. Bare resource works when unambiguous across groups; qualify with the group (`instances.podinfo.helmetica-bundles.io/my-app`) when multiple CRDSources share the same resource name:
 
 ```bash
 go run . weigh instance/my-app oci://ghcr.io/stefanprodan/charts/podinfo:6.7.0
@@ -43,8 +43,9 @@ Instead of weighing two sources, the `ledger` command lets you browse a claim's
 go run . ledger instance/my-app
 ```
 
-- The operand names the claim instance (`<kind>/<name>`) — an instance of one of
-  chrysopoeia's dynamically generated CRDs.
+- The operand names the claim instance (`<resource>[.<group>]/<name>`) — an instance of
+  one of chrysopoeia's dynamically generated CRDs. Qualify with the group when bare
+  resource is ambiguous across multiple CRDSources.
 - The revisions are the `InstanceRevision` objects owned by that instance.
 - `-n` / `--namespace` — defaults to the kubeconfig context namespace.
 
@@ -71,13 +72,18 @@ kubectl get crds | grep helmetica-bundles
 kubectl apply -f examples/instance.yaml
 kubectl get instancerevisions
 
-# Browse it — the revision shows red "not approved"; press `a` to approve,
+# Browse it, the revision shows red "not approved"; press `a` to approve,
 # which patches spec.approvedAt in the cluster:
 go run . ledger instance/my-app
 kubectl get instancerevisions -o yaml | grep approvedAt
 
 # Or weigh the claim against a newer chart:
 go run . weigh instance/my-app oci://ghcr.io/stefanprodan/charts/podinfo:6.7.0
+
+# Bare resource ("instance") works when it's unambiguous across groups.
+# If you have multiple CRDSources and the RESTMapper complains about ambiguity,
+# qualify with the group. The group is always <sourceName>.helmetica-bundles.io:
+go run . ledger instances.podinfo.helmetica-bundles.io/my-app
 ```
 
 Each distinct spec state (`ociUrl`, `version`, `values`) yields a new owned

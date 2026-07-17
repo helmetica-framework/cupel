@@ -32,7 +32,7 @@ func TestLedgerRejectsMalformedOperand(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%q: expected error for operand without <kind>/<name> shape", operand)
 		}
-		if !strings.Contains(err.Error(), "<kind>/<name>") {
+		if !strings.Contains(err.Error(), "<resource>") {
 			t.Errorf("%q: error should explain the expected shape, got: %v", operand, err)
 		}
 	}

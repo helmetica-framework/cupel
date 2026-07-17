@@ -45,23 +45,25 @@ func NewClient() (*Client, error) {
 	}, nil
 }
 
-// LoadClaim fetches the claim instance named by operand ("<kind>/<name>",
-// kubectl-style, e.g. "podinfo/my-app") in ns. The kind segment resolves
-// through the cluster's RESTMapper to one of chrysopoeia's dynamically
-// generated CRDs, so the instance is read as unstructured. The returned Claim
-// carries spec.ociUrl/version/values plus the instance UID that its
-// InstanceRevisions name as controller owner.
+// LoadClaim fetches the claim instance named by operand in ns. Operand form is
+// "<resource>[.<group>]/<name>" (kubectl-style): bare resource works when
+// unambiguous across groups; qualified form ("instances.podinfo.helmetica-bundles.io/my-app")
+// disambiguates when multiple groups share the same resource name. The kind
+// segment resolves through the cluster's RESTMapper to one of chrysopoeia's
+// dynamically generated CRDs, so the instance is read as unstructured. The
+// returned Claim carries spec.ociUrl/version/values plus the instance UID that
+// its InstanceRevisions name as controller owner.
 func (c *Client) LoadClaim(ctx context.Context, operand, ns string) (Claim, error) {
 	split := strings.Split(operand, "/")
 
 	if len(split) != 2 {
-		return Claim{}, fmt.Errorf("wrong shape for claim parameter, want: kind/name have: %s", operand)
+		return Claim{}, fmt.Errorf("wrong shape for claim parameter, want: kind.group/name have: %s", operand)
 	}
 
-	kind := split[0]
+	kind, group, _ := strings.Cut(split[0], ".")
 	name := split[1]
 
-	gvk, err := c.kube.RESTMapper().KindFor(schema.GroupVersionResource{Resource: kind})
+	gvk, err := c.kube.RESTMapper().KindFor(schema.GroupVersionResource{Resource: kind, Group: group})
 	if err != nil {
 		return Claim{}, fmt.Errorf("getting gvk for claim of kind %s: %w", kind, err)
 	}
