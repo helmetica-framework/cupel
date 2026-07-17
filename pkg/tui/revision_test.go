@@ -62,7 +62,7 @@ func sizedRev(m revModel) revModel {
 // changes, delivered via revDiffMsg, and populates the columns.
 func TestSelectRevisionProducesDiff(t *testing.T) {
 	claim, revs, puller, eng := testFixtures(t)
-	m := sizedRev(newRevModel(claim, revs, puller, eng))
+	m := sizedRev(newRevModel(claim, revs, puller, eng, approveOK))
 
 	// navigate to rev-b (index 1) so the selection matches the command
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -101,7 +101,7 @@ func TestSelectRevisionProducesDiff(t *testing.T) {
 // Re-selecting a cached revision returns no command (instant).
 func TestReselectCachedRevisionSkipsCommand(t *testing.T) {
 	claim, revs, puller, eng := testFixtures(t)
-	m := sizedRev(newRevModel(claim, revs, puller, eng))
+	m := sizedRev(newRevModel(claim, revs, puller, eng, approveOK))
 
 	cmd := m.selectCmd(1)
 	msg := cmd().(revDiffMsg)
@@ -116,7 +116,7 @@ func TestReselectCachedRevisionSkipsCommand(t *testing.T) {
 // The revision list is shown and quit keys work.
 func TestRevViewListsRevisionsAndQuits(t *testing.T) {
 	claim, revs, puller, eng := testFixtures(t)
-	m := sizedRev(newRevModel(claim, revs, puller, eng))
+	m := sizedRev(newRevModel(claim, revs, puller, eng, approveOK))
 
 	view := m.View().Content
 	if !strings.Contains(view, "rev-a") || !strings.Contains(view, "rev-b") {
@@ -135,7 +135,7 @@ func TestRevViewListsRevisionsAndQuits(t *testing.T) {
 // A pull failure surfaces as a revDiffMsg carrying the error, not a panic.
 func TestSelectRevisionSurfacesError(t *testing.T) {
 	claim, revs, _, eng := testFixtures(t)
-	m := sizedRev(newRevModel(claim, revs, errPuller{}, eng))
+	m := sizedRev(newRevModel(claim, revs, errPuller{}, eng, approveOK))
 
 	cmd := m.selectCmd(1)
 	if cmd == nil {
@@ -154,7 +154,7 @@ func TestSelectRevisionSurfacesError(t *testing.T) {
 // render command for the unchanged selection.
 func TestNavigationAtBoundaryIsNoOp(t *testing.T) {
 	claim, revs, puller, eng := testFixtures(t)
-	m := sizedRev(newRevModel(claim, revs, puller, eng)) // selected = 0
+	m := sizedRev(newRevModel(claim, revs, puller, eng, approveOK)) // selected = 0
 
 	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'k', Text: "k"}); cmd != nil {
 		t.Error("up at first revision should be a no-op, got a command")
@@ -177,7 +177,7 @@ func TestNavigatingAwayFromErrorClearsIt(t *testing.T) {
 		{Name: "rev-a", Created: time.Unix(1, 0), OCI: "oci://demo", Version: "1.0.0", Values: map[string]any{"replicas": 5}},
 		{Name: "rev-b", Created: time.Unix(2, 0), OCI: "oci://demo", Version: "9.9.9", Values: map[string]any{"replicas": 7}},
 	}
-	m := sizedRev(newRevModel(claim, revs, puller, eng))
+	m := sizedRev(newRevModel(claim, revs, puller, eng, approveOK))
 
 	// Cache rev-a (renders fine), staying on index 0.
 	updated, _ := m.Update(m.selectCmd(0)().(revDiffMsg))
@@ -226,7 +226,7 @@ func (p *countPuller) Pull(ref string) (*chart.Chart, error) {
 func TestModelCachesSharedChartPulls(t *testing.T) {
 	claim, revs, _, eng := testFixtures(t)
 	inner := &countPuller{ch: demoPuller(t).ch, calls: map[string]int{}}
-	m := sizedRev(newRevModel(claim, revs, inner, eng))
+	m := sizedRev(newRevModel(claim, revs, inner, eng, approveOK))
 
 	m.selectCmd(0)() // rev-a: claim ref == rev ref
 
@@ -251,7 +251,7 @@ func approvalModel(t *testing.T) revModel {
 		{Name: "rev-unapproved", Created: time.Unix(2, 0), OCI: "oci://demo", Version: "1.0.0", ApprovedAt: nil},
 		{Name: "rev-future", Created: time.Unix(3, 0), OCI: "oci://demo", Version: "1.0.0", ApprovedAt: &future},
 	}
-	m := newRevModel(claim, revs, puller, eng)
+	m := newRevModel(claim, revs, puller, eng, approveOK)
 	m.now = fixedNow
 	// Wide enough that the full "approved at: …" status line fits the list
 	// column without truncation (listColMax = 34).
@@ -289,16 +289,37 @@ func TestApproveAffordanceShownOnlyForSelectedUnapproved(t *testing.T) {
 	}
 }
 
-func TestPressingApproveFlipsUnapprovedToApproved(t *testing.T) {
+// Pressing a on an unapproved revision fires the approve command; the state
+// flips only when the approveMsg confirming the server write arrives.
+func TestPressingApproveFiresCommandAndFlipsOnSuccess(t *testing.T) {
 	m := approvalModel(t)
 	updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"}) // select rev-unapproved
 	m = updated.(revModel)
 
-	updated, _ = m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(revModel)
+	if m.revs[1].ApprovedAt != nil {
+		t.Fatal("ApprovedAt flipped before the server confirmed")
+	}
+	if cmd == nil {
+		t.Fatal("expected an approve command")
+	}
 
+	msg, ok := cmd().(approveMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want approveMsg", cmd())
+	}
+	if msg.err != nil {
+		t.Fatalf("approve error: %v", msg.err)
+	}
+	if msg.name != "rev-unapproved" {
+		t.Errorf("msg.name = %q, want rev-unapproved", msg.name)
+	}
+
+	updated, _ = m.Update(msg)
+	m = updated.(revModel)
 	if m.revs[1].ApprovedAt == nil {
-		t.Fatal("ApprovedAt still nil after pressing a")
+		t.Fatal("ApprovedAt still nil after successful approveMsg")
 	}
 	if !m.revs[1].ApprovedAt.Equal(fixedNow) {
 		t.Errorf("ApprovedAt = %v, want m.now %v", m.revs[1].ApprovedAt, fixedNow)
@@ -309,13 +330,43 @@ func TestPressingApproveFlipsUnapprovedToApproved(t *testing.T) {
 	}
 }
 
+// A failed approve surfaces the error and leaves the revision unapproved.
+func TestApproveFailureSurfacesErrorAndDoesNotFlip(t *testing.T) {
+	m := approvalModel(t)
+	m.approve = approveFail
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	m = updated.(revModel)
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	m = updated.(revModel)
+	if cmd == nil {
+		t.Fatal("expected an approve command")
+	}
+	msg := cmd().(approveMsg)
+	if msg.err == nil {
+		t.Fatal("expected the approve error in the msg")
+	}
+
+	updated, _ = m.Update(msg)
+	m = updated.(revModel)
+	if m.revs[1].ApprovedAt != nil {
+		t.Error("ApprovedAt flipped despite server error")
+	}
+	if m.err == nil {
+		t.Error("approve error not surfaced on the model")
+	}
+}
+
 func TestPressingApproveOnApprovedIsNoOp(t *testing.T) {
 	m := approvalModel(t) // selected = 0 (rev-approved, past timestamp)
 	before := *m.revs[0].ApprovedAt
 
-	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(revModel)
 
+	if cmd != nil {
+		t.Error("approve on an already-approved revision should return no command")
+	}
 	if !m.revs[0].ApprovedAt.Equal(before) {
 		t.Errorf("ApprovedAt changed on no-op approve: %v -> %v", before, *m.revs[0].ApprovedAt)
 	}
@@ -326,7 +377,7 @@ func TestPressingApproveOnApprovedIsNoOp(t *testing.T) {
 // used to render blank until the first diff landed).
 func TestInitialLoadShowsRenderingPlaceholder(t *testing.T) {
 	claim, revs, puller, eng := testFixtures(t)
-	m := sizedRev(newRevModel(claim, revs, puller, eng))
+	m := sizedRev(newRevModel(claim, revs, puller, eng, approveOK))
 	if !strings.Contains(m.View().Content, "rendering…") {
 		t.Errorf("initial load should show the rendering placeholder\n%s", m.View().Content)
 	}
@@ -341,13 +392,22 @@ func TestPressingApproveOnFutureIsNoOp(t *testing.T) {
 	}
 	before := *m.revs[2].ApprovedAt
 
-	updated, _ := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m = updated.(revModel)
 
+	if cmd != nil {
+		t.Error("approve on a future-approved revision should return no command")
+	}
 	if !m.revs[2].ApprovedAt.Equal(before) {
 		t.Errorf("future revision changed on approve: %v -> %v", before, *m.revs[2].ApprovedAt)
 	}
 }
+
+// approveOK is the default approve stub: always succeeds.
+func approveOK(string, time.Time) error { return nil }
+
+// approveFail always fails, for the error path.
+func approveFail(string, time.Time) error { return errBoom }
 
 type errPuller struct{}
 

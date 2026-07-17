@@ -29,6 +29,14 @@ type revDiffMsg struct {
 	err    error
 }
 
+// approveMsg carries the outcome of an asynchronous approval write back to
+// Update; the revision's in-memory state flips only when err is nil.
+type approveMsg struct {
+	name string
+	t    time.Time
+	err  error
+}
+
 // revModel is the Bubble Tea model for the revision-diff view: a list of
 // revisions on the left and the claim-vs-selected-revision side-by-side diff on
 // the right. Diffs are rendered lazily on selection and cached.
@@ -41,6 +49,10 @@ type revModel struct {
 	loading  bool
 	err      error
 	now      time.Time // model clock; drives approval status and stamps approvals
+	// approve writes an approval to the backing store (the cluster); the `a`
+	// key fires it as a tea.Cmd and the resulting approveMsg applies the
+	// outcome, so the view never shows an approval the server didn't accept.
+	approve func(name string, t time.Time) error
 
 	diffCache map[string]diff.Result // rendered diffs, by revision name
 
@@ -54,12 +66,13 @@ type revModel struct {
 // puller is wrapped in a caching puller so charts shared across the claim and
 // its revisions (same oci:version) are pulled once, even across the tea.Cmd
 // goroutines that render each revision.
-func newRevModel(claim revision.Claim, revs []revision.Revision, puller oci.Puller, engine diff.Engine) revModel {
+func newRevModel(claim revision.Claim, revs []revision.Revision, puller oci.Puller, engine diff.Engine, approve func(name string, t time.Time) error) revModel {
 	return revModel{
 		claim:     claim,
 		revs:      revs,
 		puller:    oci.NewCachingPuller(puller),
 		engine:    engine,
+		approve:   approve,
 		selected:  0,
 		diffCache: map[string]diff.Result{},
 		now:       time.Now(),
@@ -172,9 +185,10 @@ func (m *revModel) repaintSelected() {
 }
 
 // Update handles resize, key navigation over the revision list, and incoming
-// revDiffMsg results. Selecting a revision renders it (or repaints from cache);
-// scroll keys drive both diff viewports in lockstep; `a` approves the selected
-// unapproved revision (in-memory stub).
+// revDiffMsg/approveMsg results. Selecting a revision renders it (or repaints
+// from cache); scroll keys drive both diff viewports in lockstep; `a` fires
+// the approve callback for the selected unapproved revision, and the view
+// flips only when the resulting approveMsg confirms the write.
 func (m revModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -207,11 +221,11 @@ func (m revModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "a":
 			if len(m.revs) > 0 {
 				if state, _ := approval(m.revs[m.selected], m.now); state == approvalNone {
-					now := m.now
-					m.revs[m.selected].ApprovedAt = &now
-					// TODO: replace with a k8s client that patches spec.approvedAt on
-					// the InstanceRevision; this only updates in-memory state so the
-					// view reflects the approval.
+					rev, now, approve := m.revs[m.selected], m.now, m.approve
+
+					return m, func() tea.Msg {
+						return approveMsg{name: rev.Name, t: now, err: approve(rev.Name, now)}
+					}
 				}
 			}
 			return m, nil
@@ -221,6 +235,21 @@ func (m revModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.right, cmdR = m.right.Update(msg)
 			return m, tea.Batch(cmdL, cmdR)
 		}
+
+	case approveMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+
+		for i := range m.revs {
+			if m.revs[i].Name == msg.name {
+				at := msg.t
+				m.revs[i].ApprovedAt = &at
+			}
+		}
+
+		return m, nil
 
 	case revDiffMsg:
 		m.diffCache[msg.name] = msg.result
@@ -314,7 +343,9 @@ func (m revModel) revContent() string {
 }
 
 // RunRevisions starts the revision-diff TUI and blocks until the user quits.
-func RunRevisions(claim revision.Claim, revs []revision.Revision, puller oci.Puller, engine diff.Engine) error {
-	_, err := tea.NewProgram(newRevModel(claim, revs, puller, engine)).Run()
+// approve is called (off the UI goroutine) when the user approves a revision;
+// it should write the approval to the cluster.
+func RunRevisions(claim revision.Claim, revs []revision.Revision, puller oci.Puller, engine diff.Engine, approve func(name string, t time.Time) error) error {
+	_, err := tea.NewProgram(newRevModel(claim, revs, puller, engine, approve)).Run()
 	return err
 }
