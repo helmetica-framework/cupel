@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,7 +9,7 @@ import (
 )
 
 // ledgerFor builds a standalone ledger command with a no-op puller and silenced
-// cobra output, for exercising flag/arg validation without launching the TUI.
+// cobra output, for exercising argument validation without a cluster.
 func ledgerFor(args ...string) *cobra.Command {
 	cmd := newLedgerCmd(fakePuller{charts: map[string]*chart.Chart{}})
 	cmd.SilenceErrors = true
@@ -20,59 +18,34 @@ func ledgerFor(args ...string) *cobra.Command {
 	return cmd
 }
 
-func TestLedgerRequiresClaimFlag(t *testing.T) {
-	err := ledgerFor("-r", "somedir").Execute()
-	if err == nil {
-		t.Fatal("expected error: --claim is required")
-	}
-	if !strings.Contains(err.Error(), "required") {
-		t.Errorf("error should mention the required flag, got: %v", err)
+func TestLedgerRequiresExactlyOneArg(t *testing.T) {
+	for _, args := range [][]string{{}, {"podinfo/a", "podinfo/b"}} {
+		if err := ledgerFor(args...).Execute(); err == nil {
+			t.Errorf("%v: expected ExactArgs(1) error", args)
+		}
 	}
 }
 
-func TestLedgerRequiresRevisionsFlag(t *testing.T) {
-	err := ledgerFor("-c", "claim.yaml").Execute()
-	if err == nil {
-		t.Fatal("expected error: --revisions is required")
-	}
-	if !strings.Contains(err.Error(), "required") {
-		t.Errorf("error should mention the required flag, got: %v", err)
-	}
-}
-
-func TestLedgerRejectsPositionalArgs(t *testing.T) {
-	err := ledgerFor("-c", "claim.yaml", "-r", "somedir", "extra").Execute()
-	if err == nil {
-		t.Fatal("expected error: ledger takes no positional args")
+func TestLedgerRejectsMalformedOperand(t *testing.T) {
+	for _, operand := range []string{"just-a-name", "/no-kind", "no-name/", "a/b/c"} {
+		err := ledgerFor(operand).Execute()
+		if err == nil {
+			t.Fatalf("%q: expected error for operand without <kind>/<name> shape", operand)
+		}
+		if !strings.Contains(err.Error(), "<kind>/<name>") {
+			t.Errorf("%q: error should explain the expected shape, got: %v", operand, err)
+		}
 	}
 }
 
-// With both flags set but a bogus claim path, validation passes and the command
-// proceeds to loading — so the error is a claim load error, not a flag error.
-func TestLedgerBogusClaimSurfacesLoadError(t *testing.T) {
-	err := ledgerFor("-c", "/no/such/claim.yaml", "-r", "/no/such/dir").Execute()
+// With a valid operand but no reachable cluster, the failure is a connection
+// error from client construction — proving arg validation passed and the
+// command dialed rather than reading files.
+func TestLedgerNoClusterSurfacesClientError(t *testing.T) {
+	t.Setenv("KUBECONFIG", "/no/such/kubeconfig")
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	err := ledgerFor("podinfo/my-app").Execute()
 	if err == nil {
-		t.Fatal("expected a claim load error")
-	}
-	if !strings.Contains(err.Error(), "claim") {
-		t.Errorf("expected a claim load error (passed flag validation), got: %v", err)
-	}
-}
-
-// A valid claim but an empty revisions directory hits the empty-set guard.
-func TestLedgerEmptyRevisionsGuard(t *testing.T) {
-	dir := t.TempDir()
-	claimPath := filepath.Join(dir, "claim.yaml")
-	if err := os.WriteFile(claimPath, []byte("oci: oci://demo\nversion: 1.0.0\n"), 0o644); err != nil {
-		t.Fatalf("write claim: %v", err)
-	}
-	emptyRevs := t.TempDir()
-
-	err := ledgerFor("-c", claimPath, "-r", emptyRevs).Execute()
-	if err == nil {
-		t.Fatal("expected an empty-revisions error")
-	}
-	if !strings.Contains(err.Error(), "no revisions") {
-		t.Errorf("expected the empty-revisions guard, got: %v", err)
+		t.Fatal("expected a client construction error")
 	}
 }

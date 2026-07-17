@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -12,28 +14,42 @@ import (
 )
 
 // newLedgerCmd builds the ledger command: an interactive browser that diffs a
-// directory of InstanceRevision files against a claim base, opening the
-// revision TUI. Both --claim and --revisions are required; it takes no
-// positional args.
+// claim instance's InstanceRevisions against the claim itself, opening the
+// revision TUI. The single operand names the claim (<kind>/<name>, resolved
+// in-cluster); -n overrides the kubeconfig context namespace.
 func newLedgerCmd(puller oci.Puller) *cobra.Command {
-	var engineName, revDir, claimPath string
+	var engineName, namespace string
 	cmd := &cobra.Command{
-		Use:   "ledger -c <claim.yaml> -r <dir>",
-		Short: "Leaf through a release's revisions against its claim.",
-		Args:  cobra.ExactArgs(0),
+		Use:   "ledger <kind>/<name>",
+		Short: "Leaf through a claim's revisions in the cluster.",
+		Args: cobra.MatchAll(cobra.ExactArgs(1), func(cmd *cobra.Command, args []string) error {
+			// Mirrors LoadClaim's shape check so anything cobra accepts the
+			// client accepts too (k8s names cannot contain "/").
+			if parts := strings.Split(args[0], "/"); len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+				return fmt.Errorf("operand %q must be <kind>/<name>, e.g. podinfo/my-app", args[0])
+			}
+			return nil
+		}),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			claim, err := revision.LoadClaim(claimPath)
+			c, err := revision.NewClient()
 			if err != nil {
 				return err
 			}
 
-			revs, err := revision.LoadRevisions(revDir)
+			ns := resolveNamespace(namespace)
+
+			claim, err := c.LoadClaim(cmd.Context(), args[0], ns)
+			if err != nil {
+				return err
+			}
+
+			revs, err := c.LoadRevisions(cmd.Context(), ns, claim.UID)
 			if err != nil {
 				return err
 			}
 
 			if len(revs) == 0 {
-				return fmt.Errorf("no revisions found in %s", revDir)
+				return fmt.Errorf("no revisions for claim %s in ns %s", args[0], ns)
 			}
 
 			eng, err := diff.Get(engineName)
@@ -41,13 +57,14 @@ func newLedgerCmd(puller oci.Puller) *cobra.Command {
 				return err
 			}
 
-			return tui.RunRevisions(claim, revs, puller, eng)
+			approve := func(name string, t time.Time) error {
+				return c.Approve(cmd.Context(), ns, name, t)
+			}
+
+			return tui.RunRevisions(claim, revs, puller, eng, approve)
 		},
 	}
-	cmd.Flags().StringVarP(&revDir, "revisions", "r", "", "directory of InstanceRevision YAML files")
-	cmd.Flags().StringVarP(&claimPath, "claim", "c", "", "claim YAML file")
-	_ = cmd.MarkFlagRequired("revisions")
-	_ = cmd.MarkFlagRequired("claim")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace (defaults to the kubeconfig context namespace)")
 	// hidden engine seam; defaults to "linewise", not advertised yet.
 	cmd.Flags().StringVar(&engineName, "engine", "linewise", "diff engine")
 	_ = cmd.Flags().MarkHidden("engine")
