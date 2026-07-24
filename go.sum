@@ -138,8 +138,8 @@ github.com/hashicorp/golang-lru/arc/v2 v2.0.5 h1:l2zaLDubNhW4XO3LnliVj0GXO3+/CGN
 github.com/hashicorp/golang-lru/arc/v2 v2.0.5/go.mod h1:ny6zBSQZi2JxIeYcv7kt2sH2PXJtirBN7RDhRpxPkxU=
 github.com/hashicorp/golang-lru/v2 v2.0.5 h1:wW7h1TG88eUIJ2i69gaE3uNVtEPIagzhGvHgwfx2Vm4=
 github.com/hashicorp/golang-lru/v2 v2.0.5/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
-github.com/helmetica-framework/chrysopoeia v0.0.0-20260721095231-3922b24750f5 h1:tOWA3Bsb0uO95CBr8EuXDawnnkde4LKfLiNH4jYGsSA=
-github.com/helmetica-framework/chrysopoeia v0.0.0-20260721095231-3922b24750f5/go.mod h1:UKsIyWT3re2TsVginC8A5Sg3nNIgFy9Y3To4x6czViY=
+github.com/helmetica-framework/chrysopoeia v0.0.0-20260723211553-3f2b8cfd5b29 h1:hBPrOyZ8rZnhZK4hgxBP8oh+sd5kIMIWTZtL0z/XvpM=
+github.com/helmetica-framework/chrysopoeia v0.0.0-20260723211553-3f2b8cfd5b29/go.mod h1:aMBz7FWcgh2APLqh7zs4O7CJZi5n4GffUE/NrteKyRU=
 github.com/huandu/xstrings v1.5.0 h1:2ag3IFq9ZDANvthTwTiqSSZLjDc+BedvHPAp5tJy2TI=
 github.com/huandu/xstrings v1.5.0/go.mod h1:y5/lhBue+AyNmUVz9RLU9xbLR0o4KIIExikq4ovT0aE=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
