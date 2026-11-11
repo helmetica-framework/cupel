@@ -104,7 +104,7 @@ func (c *Client) LoadClaim(ctx context.Context, operand, ns string) (Claim, erro
 // the instance with the given UID, sorted oldest-first by creation timestamp
 // (name breaks ties for a stable order).
 func (c *Client) LoadRevisions(ctx context.Context, ns string, owner types.UID) ([]Revision, error) {
-	revList := &chrysov1.InstanceRevisionList{}
+	revList := &chrysov1.ClaimRevisionList{}
 
 	err := c.kube.List(ctx, revList, &client.ListOptions{Namespace: ns})
 	if err != nil {
@@ -139,7 +139,7 @@ func (c *Client) LoadRevisions(ctx context.Context, ns string, owner types.UID) 
 // Approve stamps spec.approvedAt on the named InstanceRevision with a merge
 // patch, leaving the rest of the spec untouched.
 func (c *Client) Approve(ctx context.Context, ns, name string, t time.Time) error {
-	ir := &chrysov1.InstanceRevision{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name}}
+	ir := &chrysov1.ClaimRevision{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name}}
 
 	patch := fmt.Appendf(nil, `{"spec":{"approvedAt":%q}}`, t.UTC().Format(time.RFC3339))
 
@@ -149,7 +149,7 @@ func (c *Client) Approve(ctx context.Context, ns, name string, t time.Time) erro
 // fromInstanceRevision reduces a typed InstanceRevision to the fields cupel
 // renders and diffs. spec.values is optional JSON in Raw; empty Raw means "no
 // overlay". Errors name the revision.
-func fromInstanceRevision(ir chrysov1.InstanceRevision) (Revision, error) {
+func fromInstanceRevision(ir chrysov1.ClaimRevision) (Revision, error) {
 	var values map[string]any
 
 	if len(ir.Spec.Values.Raw) > 0 {

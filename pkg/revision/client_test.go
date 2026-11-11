@@ -21,14 +21,14 @@ const ownerUID = types.UID("uid-instance-1")
 
 // newIR builds an InstanceRevision fixture. owner=="" means no ownerReference;
 // values=="" means no spec.values; approved==nil means never approved.
-func newIR(name string, created time.Time, owner types.UID, values string, approved *time.Time) *chrysov1.InstanceRevision {
-	ir := &chrysov1.InstanceRevision{
+func newIR(name string, created time.Time, owner types.UID, values string, approved *time.Time) *chrysov1.ClaimRevision {
+	ir := &chrysov1.ClaimRevision{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			Namespace:         "prod",
 			CreationTimestamp: metav1.Time{Time: created},
 		},
-		Spec: chrysov1.InstanceRevisionSpec{
+		Spec: chrysov1.ClaimRevisionSpec{
 			OCIUrl:  "oci://demo",
 			Version: "1.0.0",
 		},
@@ -183,7 +183,7 @@ func TestApprovePatchesApprovedAt(t *testing.T) {
 		t.Fatalf("Approve: %v", err)
 	}
 
-	var got chrysov1.InstanceRevision
+	var got chrysov1.ClaimRevision
 	if err := c.kube.Get(context.Background(), client.ObjectKey{Namespace: "prod", Name: "rev-a"}, &got); err != nil {
 		t.Fatalf("Get after Approve: %v", err)
 	}
