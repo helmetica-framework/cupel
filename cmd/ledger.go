@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -32,6 +34,9 @@ func newLedgerCmd(puller oci.Puller) *cobra.Command {
 			return nil
 		}),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// helm.sh/helm/v4/pkg/chart/common/util contains some log.Printf calls that pollute the TUI
+			log.SetOutput(io.Discard)
+
 			c, err := revision.NewClient()
 			if err != nil {
 				return err
