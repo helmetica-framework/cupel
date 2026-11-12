@@ -18,6 +18,8 @@ type Claim struct {
 	// UID identifies the claim instance in the cluster; its InstanceRevisions
 	// carry it as their controller ownerReference.
 	UID types.UID
+
+	LatestRevision *Revision
 }
 
 // Revision is a parsed InstanceRevision reduced to what the diff needs: its

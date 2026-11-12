@@ -104,9 +104,25 @@ func statusLine(state approvalState, text string, selected bool) string {
 // model's caching puller, so shared charts are pulled once; it is safe to run
 // inside a tea.Cmd goroutine.
 func revisionDiff(puller oci.Puller, engine diff.Engine, claim revision.Claim, rev revision.Revision) (diff.Result, error) {
-	claimMan, claimLabel, err := source.Claim(claim).Render(puller)
-	if err != nil {
-		return diff.Result{}, fmt.Errorf("claim: %w", err)
+	var base diff.Rendered
+	if claim.LatestRevision != nil {
+		revMan, revLabel, err := source.Revision(*claim.LatestRevision).Render(puller)
+		if err != nil {
+			return diff.Result{}, fmt.Errorf("revision %s: %w", rev.Name, err)
+		}
+		base = diff.Rendered{
+			Ref:      revLabel,
+			Manifest: revMan,
+		}
+	} else {
+		claimMan, claimLabel, err := source.Claim(claim).Render(puller)
+		if err != nil {
+			return diff.Result{}, fmt.Errorf("claim: %w", err)
+		}
+		base = diff.Rendered{
+			Ref:      claimLabel,
+			Manifest: claimMan,
+		}
 	}
 
 	revMan, revLabel, err := source.Revision(rev).Render(puller)
@@ -114,13 +130,11 @@ func revisionDiff(puller oci.Puller, engine diff.Engine, claim revision.Claim, r
 		return diff.Result{}, fmt.Errorf("revision %s: %w", rev.Name, err)
 	}
 
-	return engine.Diff(diff.Rendered{
-		Ref:      claimLabel,
-		Manifest: claimMan,
-	}, diff.Rendered{
-		Ref:      revLabel,
-		Manifest: revMan,
-	})
+	return engine.Diff(base,
+		diff.Rendered{
+			Ref:      revLabel,
+			Manifest: revMan,
+		})
 }
 
 // selectCmd returns the command that computes the diff for the revision at

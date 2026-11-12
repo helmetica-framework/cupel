@@ -85,9 +85,29 @@ func (c *Client) LoadClaim(ctx context.Context, operand, ns string) (Claim, erro
 		return Claim{}, fmt.Errorf("claim %s has no usable spec.ociUrl (found=%t): %v", operand, found, err)
 	}
 
-	claim.Version, found, err = unstructured.NestedString(u.Object, "spec", "version")
-	if err != nil || !found {
-		return Claim{}, fmt.Errorf("claim %s has no usable spec.version (found=%t): %v", operand, found, err)
+	claim.Version, _, err = unstructured.NestedString(u.Object, "spec", "version")
+	if err != nil {
+		return Claim{}, fmt.Errorf("claim %s has no usable spec.version: %v", operand, err)
+	}
+	latestRevName, found, err := unstructured.NestedString(u.Object, "status", "latestRevision")
+	if err != nil {
+		return Claim{}, fmt.Errorf("getting latestRevision from claim %s: %w", operand, err)
+	}
+	if found {
+		var rev chrysov1.ClaimRevision
+		if err := c.kube.Get(ctx, client.ObjectKey{Name: latestRevName, Namespace: ns}, &rev); err != nil {
+			return Claim{}, fmt.Errorf("getting latestRevision %s for claim %s: %w", latestRevName, operand, err)
+		}
+
+		converted, err := fromInstanceRevision(rev)
+		if err != nil {
+			return Claim{}, fmt.Errorf("converting latestRevision %s for claim %s: %w", latestRevName, operand, err)
+		}
+
+		claim.LatestRevision = &converted
+	}
+	if claim.Version == "" && claim.LatestRevision == nil {
+		return Claim{}, fmt.Errorf("claim %s has neither spec.version nor a valid latestRevision", operand)
 	}
 
 	// values is optional: absent means "no overlay" (nil map, no error); only a
