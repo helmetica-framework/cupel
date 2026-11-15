@@ -12,7 +12,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	helm.sh/helm/v4 v4.2.4
 	k8s.io/apimachinery v0.37.2
-	k8s.io/client-go v0.37.2
+	k8s.io/client-go v11.0.0+incompatible
 	sigs.k8s.io/controller-runtime v0.25.0
 )
 
