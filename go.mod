@@ -8,7 +8,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/helmetica-framework/chrysopoeia v0.1.4
-	github.com/sergi/go-diff v1.4.0
+	github.com/sergi/go-diff v1.4.5
 	github.com/spf13/cobra v1.10.2
 	helm.sh/helm/v4 v4.2.4
 	k8s.io/apimachinery v0.37.2
