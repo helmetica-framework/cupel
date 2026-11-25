@@ -1,0 +1,8 @@
+= Go libraries
+
+* https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/diff[diff] - pluggable diff engines over rendered charts (the `linewise` engine ships by default).
+* https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/render[render] - render a chart to its manifests with default values.
+* https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/source[source] - turn a diff operand (OCI ref or cluster claim reference) into a rendered manifest.
+* https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/oci[oci] - pull a Helm chart from an OCI registry.
+* https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/revision[revision] - load a claim and its InstanceRevisions from the cluster, and write approvals back.
+* https://pkg.go.dev/github.com/helmetica-framework/cupel/pkg/tui[tui] - the interactive side-by-side viewer.

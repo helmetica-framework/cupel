@@ -1,0 +1,6 @@
+name: cupel
+title: Cupel
+version: ~
+start_page: ROOT:index.adoc
+nav:
+- modules/ROOT/nav.adoc

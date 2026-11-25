@@ -1,0 +1,10 @@
+= How it works
+
+Each chart is pulled from its OCI registry and rendered client-side, using a
+fixed dummy release (name `cupel`, namespace `default`) so any difference is
+chart- or values-driven; the cluster is contacted only to read claims and
+revisions and to write approvals, never to render. `weigh` renders each
+source — an OCI ref with the chart's *default values*, a claim with its
+`values` overlaid; `ledger` overlays the claim's and each revision's `values`
+on top. The rendered manifests are then diffed line by line and aligned into
+rows for the side-by-side view.

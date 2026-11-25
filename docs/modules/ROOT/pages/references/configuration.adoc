@@ -1,0 +1,4 @@
+= Configuration
+
+Run `go run . <command> --help` for the flags of each command.
+`-n` overrides the namespace claim operands are resolved in.

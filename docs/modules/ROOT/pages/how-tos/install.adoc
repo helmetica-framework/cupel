@@ -1,0 +1,8 @@
+= Install
+
+Run it straight from the module:
+
+[source,bash]
+----
+go run github.com/helmetica-framework/cupel@latest --help
+----
