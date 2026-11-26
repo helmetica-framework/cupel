@@ -1,0 +1,9 @@
+= Develop
+
+[source,bash]
+----
+make build   # generate, fmt, vet and the binary
+make test    # tests
+make lint    # all-in-one linting, including these docs
+make docs    # build these docs, fails on warnings
+----

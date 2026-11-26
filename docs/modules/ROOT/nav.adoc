@@ -1,0 +1,15 @@
+* xref:index.adoc[Overview]
+
+.Explanations
+* xref:explanations/architecture.adoc[How it works]
+* xref:explanations/limitations.adoc[Known limitations]
+
+.How-tos
+* xref:how-tos/install.adoc[how-tos/install.adoc]
+* xref:how-tos/weigh-charts.adoc[Weigh two chart versions]
+* xref:how-tos/ledger.adoc[Browse revisions of a claim (`ledger`)]
+* xref:how-tos/develop.adoc[how-tos/develop.adoc]
+
+.References
+* xref:references/configuration.adoc[references/configuration.adoc]
+* xref:references/libraries.adoc[Go libraries]

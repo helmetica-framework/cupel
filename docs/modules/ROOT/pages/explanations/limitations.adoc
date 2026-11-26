@@ -1,0 +1,4 @@
+= Known limitations
+
+* OCI-ref operands render with *default values only* (no `--values` / `--set` yet); claim operands and `ledger` take values from the claim and each revision.
+* Templates that use non-deterministic functions (e.g. `randAlphaNum` in a Helm test hook) can surface as spurious differences, since each render generates fresh values.

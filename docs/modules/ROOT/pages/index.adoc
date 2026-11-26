@@ -1,0 +1,6 @@
+= Cupel
+
+*Cupel*: a shallow, porous vessel used in assaying to separate precious metals and reveal their true content.
+
+Cupel *weighs* two sources against each other — where a source is an OCI-hosted Helm chart or a claim resource in your cluster: render each to its Kubernetes manifests, and show the difference side by side in your terminal.
+It's the assayer's balance for charts: put two versions on the scale and see which way they tip.

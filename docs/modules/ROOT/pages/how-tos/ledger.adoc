@@ -1,0 +1,82 @@
+= Browse revisions of a claim (`ledger`)
+
+Instead of weighing two sources, the `ledger` command lets you browse a claim's
+`InstanceRevision` history from the cluster:
+
+[source,bash]
+----
+go run . ledger instance/my-app
+----
+
+* The operand names the claim instance (`<resource>[.<group>]/<name>`) — an instance of
+  one of chrysopoeia's dynamically generated CRDs. Qualify with the group when bare
+  resource is ambiguous across multiple CRDSources.
+* The revisions are the `InstanceRevision` objects owned by that instance.
+* `-n` / `--namespace` — defaults to the kubeconfig context namespace.
+
+This opens a three-pane TUI: the revision list on the left (sorted oldest → newest
+by creation timestamp), and the claim-vs-selected-revision side-by-side diff on
+the right. Selecting a revision renders and diffs it on demand.
+
+== Try it with the examples
+
+_*Note:* this assumes a cluster with_
+_https://github.com/helmetica-framework/chrysopoeia[chrysopoeia] already_
+_installed and running (its CRDs plus the Flux source-controller it depends_
+_on — see its README for setup)._
+
+[source,bash]
+----
+# Generate the claim CRD: a CustomResourceDefinitionSource plus the Flux
+# OCIRepository it reads the chart from.
+kubectl apply -f examples/crdsource.yaml
+
+# Wait until the generated CRD is established:
+kubectl get crds | grep helmetica-bundles
+
+# Create a claim instance; chrysopoeia records an InstanceRevision for it.
+kubectl apply -f examples/instance.yaml
+kubectl get instancerevisions
+
+# Browse it, the revision shows red "not approved"; press `a` to approve,
+# which patches spec.approvedAt in the cluster:
+go run . ledger instance/my-app
+kubectl get instancerevisions -o yaml | grep approvedAt
+
+# Or weigh the claim against a newer chart:
+go run . weigh instance/my-app oci://ghcr.io/stefanprodan/charts/podinfo:6.7.0
+
+# Bare resource ("instance") works when it's unambiguous across groups.
+# If you have multiple CRDSources and the RESTMapper complains about ambiguity,
+# qualify with the group. The group is always <sourceName>.helmetica-bundles.io:
+go run . ledger instances.podinfo.helmetica-bundles.io/my-app
+----
+
+Each distinct spec state (`ociUrl`, `version`, `values`) yields a new owned
+`InstanceRevision` — bump `spec.version` in `examples/instance.yaml` and
+re-apply to grow the history ledger browses.
+
+== Keys
+
+[cols="1,1",options="header"]
+|===
+|Key |Action
+
+|`↑` / `↓`, `j` / `k`
+|select a revision
+
+|`a`
+|approve the selected unapproved revision
+
+|`PgUp` / `PgDn`
+|scroll both diff columns in lockstep
+
+|`q`, `esc`, `ctrl-c`
+|quit
+|===
+
+Each revision shows an approval status line under its name: green `approved at:`
+with the timestamp for approved revisions, red `not approved` for pending ones
+(with an `(a) approve` hint when selected), and gray for a future approval date.
+Approving patches `spec.approvedAt` on the `InstanceRevision` in the cluster;
+the view only flips once the write is confirmed.
