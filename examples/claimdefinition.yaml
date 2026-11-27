@@ -1,0 +1,48 @@
+# A chrysopoeia ClaimDefinition: generates a namespaced CRD (kind PodInfo, group
+# v6.podinfo.helmetica-bundles.io, the ClaimDefinition's name plus
+# .helmetica-bundles.io) from the chart the Flux OCIRepository below points at.
+# Instances of that CRD are the claims cupel diffs against.
+#
+# Chrysopoeia only watches ClaimDefinitions in its own namespace, so apply this
+# there (syn-helmetica-framework on athanor):
+#   kubectl -n syn-helmetica-framework apply -f examples/claimdefinition.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo-v6
+spec:
+  interval: 10m
+  provider: generic
+  ref:
+    semver: 6.x
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: podinfo
+spec:
+  exclusionList:
+  - ^.*\.sig$
+  - ^sha256-.+$
+  image: ghcr.io/stefanprodan/charts/podinfo
+  interval: 10m
+  provider: generic
+---
+apiVersion: chrysopoeia.helmetica.io/v1
+kind: ClaimDefinition
+metadata:
+  name: v6.podinfo
+spec:
+  crdNames:
+    kind: PodInfo
+    plural: podinfos
+  reference:
+    apiVersion: source.toolkit.fluxcd.io/v1
+    kind: OCIRepository
+    name: podinfo-v6
+  versionDiscovery:
+    reference:
+      apiVersion: image.toolkit.fluxcd.io/v1
+      kind: ImageRepository
+      name: podinfo

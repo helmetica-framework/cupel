@@ -52,7 +52,7 @@ func NewClient() (*Client, error) {
 // segment resolves through the cluster's RESTMapper to one of chrysopoeia's
 // dynamically generated CRDs, so the instance is read as unstructured. The
 // returned Claim carries spec.ociUrl/version/values plus the instance UID that
-// its InstanceRevisions name as controller owner.
+// its ClaimRevisions name as controller owner.
 func (c *Client) LoadClaim(ctx context.Context, operand, ns string) (Claim, error) {
 	split := strings.Split(operand, "/")
 
@@ -100,7 +100,7 @@ func (c *Client) LoadClaim(ctx context.Context, operand, ns string) (Claim, erro
 	return claim, nil
 }
 
-// LoadRevisions lists the InstanceRevisions in ns that are controller-owned by
+// LoadRevisions lists the ClaimRevisions in ns that are controller-owned by
 // the instance with the given UID, sorted oldest-first by creation timestamp
 // (name breaks ties for a stable order).
 func (c *Client) LoadRevisions(ctx context.Context, ns string, owner types.UID) ([]Revision, error) {
@@ -117,7 +117,7 @@ func (c *Client) LoadRevisions(ctx context.Context, ns string, owner types.UID) 
 		oref := metav1.GetControllerOf(&rev)
 
 		if oref != nil && oref.UID == owner {
-			converted, err := fromInstanceRevision(rev)
+			converted, err := fromClaimRevision(rev)
 			if err != nil {
 				return nil, err
 			}
@@ -136,7 +136,7 @@ func (c *Client) LoadRevisions(ctx context.Context, ns string, owner types.UID) 
 	return filtered, nil
 }
 
-// Approve stamps spec.approvedAt on the named InstanceRevision with a merge
+// Approve stamps spec.approvedAt on the named ClaimRevision with a merge
 // patch, leaving the rest of the spec untouched.
 func (c *Client) Approve(ctx context.Context, ns, name string, t time.Time) error {
 	ir := &chrysov1.ClaimRevision{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name}}
@@ -146,10 +146,10 @@ func (c *Client) Approve(ctx context.Context, ns, name string, t time.Time) erro
 	return c.kube.Patch(ctx, ir, client.RawPatch(types.MergePatchType, patch))
 }
 
-// fromInstanceRevision reduces a typed InstanceRevision to the fields cupel
+// fromClaimRevision reduces a typed ClaimRevision to the fields cupel
 // renders and diffs. spec.values is optional JSON in Raw; empty Raw means "no
 // overlay". Errors name the revision.
-func fromInstanceRevision(ir chrysov1.ClaimRevision) (Revision, error) {
+func fromClaimRevision(ir chrysov1.ClaimRevision) (Revision, error) {
 	var values map[string]any
 
 	if len(ir.Spec.Values.Raw) > 0 {

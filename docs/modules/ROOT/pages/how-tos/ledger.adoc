@@ -1,17 +1,17 @@
 = Browse revisions of a claim (`ledger`)
 
 Instead of weighing two sources, the `ledger` command lets you browse a claim's
-`InstanceRevision` history from the cluster:
+`ClaimRevision` history from the cluster:
 
 [source,bash]
 ----
-go run . ledger instance/my-app
+go run . ledger podinfo/my-app
 ----
 
 * The operand names the claim instance (`<resource>[.<group>]/<name>`) — an instance of
   one of chrysopoeia's dynamically generated CRDs. Qualify with the group when bare
-  resource is ambiguous across multiple CRDSources.
-* The revisions are the `InstanceRevision` objects owned by that instance.
+  resource is ambiguous across multiple ``ClaimDefinition``s.
+* The revisions are the `ClaimRevision` objects owned by that instance.
 * `-n` / `--namespace` — defaults to the kubeconfig context namespace.
 
 This opens a three-pane TUI: the revision list on the left (sorted oldest → newest
@@ -27,33 +27,33 @@ _on — see its README for setup)._
 
 [source,bash]
 ----
-# Generate the claim CRD: a CustomResourceDefinitionSource plus the Flux
-# OCIRepository it reads the chart from.
-kubectl apply -f examples/crdsource.yaml
+# Generate the claim CRD: a ClaimDefinition plus the Flux OCIRepository and
+# ImageRepository it reads the chart and its versions from. Chrysopoeia only
+# watches its own namespace (syn-helmetica-framework on athanor).
+kubectl -n syn-helmetica-framework apply -f examples/claimdefinition.yaml
+kubectl -n syn-helmetica-framework wait --for condition=Ready claimdefinition/v6.podinfo
 
-# Wait until the generated CRD is established:
-kubectl get crds | grep helmetica-bundles
-
-# Create a claim instance; chrysopoeia records an InstanceRevision for it.
+# Create a claim; chrysopoeia records a ClaimRevision for it.
 kubectl apply -f examples/instance.yaml
-kubectl get instancerevisions
+kubectl get claimrevisions
 
 # Browse it, the revision shows red "not approved"; press `a` to approve,
 # which patches spec.approvedAt in the cluster:
-go run . ledger instance/my-app
-kubectl get instancerevisions -o yaml | grep approvedAt
+go run . ledger podinfo/my-app
+kubectl get claimrevisions -o yaml | grep approvedAt
 
 # Or weigh the claim against a newer chart:
-go run . weigh instance/my-app oci://ghcr.io/stefanprodan/charts/podinfo:6.7.0
+go run . weigh podinfo/my-app oci://ghcr.io/stefanprodan/charts/podinfo:6.7.0
 
-# Bare resource ("instance") works when it's unambiguous across groups.
-# If you have multiple CRDSources and the RESTMapper complains about ambiguity,
-# qualify with the group. The group is always <sourceName>.helmetica-bundles.io:
-go run . ledger instances.podinfo.helmetica-bundles.io/my-app
+# Bare resource ("podinfo") works when it's unambiguous across groups.
+# If several ClaimDefinitions generate the same resource name and the
+# RESTMapper complains about ambiguity, qualify with the group, which is the
+# ClaimDefinition's name plus .helmetica-bundles.io:
+go run . ledger podinfos.v6.podinfo.helmetica-bundles.io/my-app
 ----
 
-Each distinct spec state (`ociUrl`, `version`, `values`) yields a new owned
-`InstanceRevision` — bump `spec.version` in `examples/instance.yaml` and
+Each change to `spec.version` or `spec.values` yields a new owned
+`ClaimRevision`: bump `spec.version` in `examples/instance.yaml` and
 re-apply to grow the history ledger browses.
 
 == Keys
@@ -78,5 +78,5 @@ re-apply to grow the history ledger browses.
 Each revision shows an approval status line under its name: green `approved at:`
 with the timestamp for approved revisions, red `not approved` for pending ones
 (with an `(a) approve` hint when selected), and gray for a future approval date.
-Approving patches `spec.approvedAt` on the `InstanceRevision` in the cluster;
+Approving patches `spec.approvedAt` on the `ClaimRevision` in the cluster;
 the view only flips once the write is confirmed.

@@ -16,7 +16,7 @@ import (
 )
 
 // newLedgerCmd builds the ledger command: an interactive browser that diffs a
-// claim instance's InstanceRevisions against the claim itself, opening the
+// claim instance's ClaimRevisions against the claim itself, opening the
 // revision TUI. The single operand names the claim
 // (<resource>[.<group>]/<name>, resolved in-cluster); -n overrides the
 // kubeconfig context namespace.
