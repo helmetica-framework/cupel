@@ -19,7 +19,7 @@ import (
 
 const ownerUID = types.UID("uid-instance-1")
 
-// newIR builds an InstanceRevision fixture. owner=="" means no ownerReference;
+// newIR builds an ClaimRevision fixture. owner=="" means no ownerReference;
 // values=="" means no spec.values; approved==nil means never approved.
 func newIR(name string, created time.Time, owner types.UID, values string, approved *time.Time) *chrysov1.ClaimRevision {
 	ir := &chrysov1.ClaimRevision{
@@ -163,10 +163,10 @@ func TestLoadRevisionsAllowsMissingValuesRaw(t *testing.T) {
 // Malformed values can't be exercised through the fake client (it rejects the
 // broken RawExtension while marshalling the List response, as the real API
 // server would at admission), so the conversion is tested directly.
-func TestFromInstanceRevisionFailsOnMalformedValuesNamingRevision(t *testing.T) {
+func TestFromClaimRevisionFailsOnMalformedValuesNamingRevision(t *testing.T) {
 	ir := newIR("rev-broken", time.Unix(1, 0), ownerUID, `{not json`, nil)
 
-	_, err := fromInstanceRevision(*ir)
+	_, err := fromClaimRevision(*ir)
 	if err == nil {
 		t.Fatal("expected error for malformed values")
 	}
@@ -318,7 +318,7 @@ func TestLoadClaimWrongTypedValuesErrors(t *testing.T) {
 
 // multiGroupClaimClient builds a Client over a fake cluster where two chart
 // groups both expose kind Instance (chrysopoeia's fallback kind), mirroring a
-// cluster with several CustomResourceDefinitionSources installed. Only the
+// cluster with several ClaimDefinitions installed. Only the
 // podinfo group holds an instance named my-app.
 func multiGroupClaimClient(t *testing.T) *Client {
 	t.Helper()

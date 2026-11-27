@@ -13,11 +13,11 @@ This opens an interactive side-by-side view of the rendered manifests:
 * red `-` lines were removed, green `+` lines were added, dim lines are unchanged
 * the header shows `refA → refB` and a `+N -M` change summary
 
-Each operand may also be a claim reference (`<resource>[.<group>]/<name>`, resolved in the cluster; `-n` overrides the namespace) instead of an OCI ref, so you can simulate an update by diffing a claim against a chart. Bare resource works when unambiguous across groups; qualify with the group (`instances.podinfo.helmetica-bundles.io/my-app`) when multiple CRDSources share the same resource name:
+Each operand may also be a claim reference (`<resource>[.<group>]/<name>`, resolved in the cluster; `-n` overrides the namespace) instead of an OCI ref, so you can simulate an update by diffing a claim against a chart. Bare resource works when unambiguous across groups; qualify with the group (`podinfos.v6.podinfo.helmetica-bundles.io/my-app`) when several ``ClaimDefinition``s generate the same resource name:
 
 [source,bash]
 ----
-go run . weigh instance/my-app oci://ghcr.io/stefanprodan/charts/podinfo:6.7.0
+go run . weigh podinfo/my-app oci://ghcr.io/stefanprodan/charts/podinfo:6.7.0
 ----
 
 A claim operand renders with its own values; two claims work too. Pure `oci://` diffs never contact the cluster.
